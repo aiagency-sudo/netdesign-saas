@@ -26,6 +26,7 @@ import re
 import shutil
 import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -94,7 +95,70 @@ def build_vsdx_bytes(design: Design) -> bytes:
 
             vis.save_vsdx(str(output_path))
 
-        return output_path.read_bytes()
+        return _dedupe_opc_metadata(output_path.read_bytes())
+
+
+CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+def _dedupe_opc_metadata(data: bytes) -> bytes:
+    """Works around a vsdx 0.6.1 bug: Connect.create() re-runs its "bootstrap the connector
+    master" branch on *every* call instead of only the first, because its guard
+    (`os.path.exists(page.vis._masters_folder)`) checks a real filesystem path that's never
+    actually populated in this in-memory-zip flow. Each call appends another
+    <Override>/<Relationship> for the same masters files without checking whether one already
+    exists — for a design with N link connectors, that's N (or N+1) duplicate entries.
+
+    Duplicate <Override PartName="..."> entries in [Content_Types].xml are invalid per the OPC
+    spec (ECMA-376 Part 2 §10.1.2.2.1: at most one Override per part), and this is what tripped
+    up draw.io's importer ("Cannot read properties of null (reading 'getElementsByTagName')")
+    even though vsdx's own (more lenient) parser round-trips it fine. Collapse both files to one
+    entry per part/relationship, keeping the first occurrence, as a post-save pass — simpler and
+    more robust than trying to patch vsdx's internal bootstrap logic.
+    """
+    src = zipfile.ZipFile(io.BytesIO(data))
+    fixed_content_types = _dedupe_by_attr(
+        src.read("[Content_Types].xml"), CONTENT_TYPES_NS, "Override", "PartName",
+    )
+    fixed_document_rels = _dedupe_relationships(src.read("visio/_rels/document.xml.rels"))
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            if item.filename == "[Content_Types].xml":
+                dst.writestr(item, fixed_content_types)
+            elif item.filename == "visio/_rels/document.xml.rels":
+                dst.writestr(item, fixed_document_rels)
+            else:
+                dst.writestr(item, src.read(item.filename))
+    return out.getvalue()
+
+
+def _dedupe_by_attr(xml_bytes: bytes, ns_uri: str, tag: str, key_attr: str) -> bytes:
+    ET.register_namespace("", ns_uri)
+    root = ET.fromstring(xml_bytes)
+    seen: set[str] = set()
+    for el in list(root.findall(f"{{{ns_uri}}}{tag}")):
+        key = el.attrib.get(key_attr, "")
+        if key in seen:
+            root.remove(el)
+        else:
+            seen.add(key)
+    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+
+def _dedupe_relationships(xml_bytes: bytes) -> bytes:
+    ET.register_namespace("", RELATIONSHIPS_NS)
+    root = ET.fromstring(xml_bytes)
+    seen: set[tuple[str, str]] = set()
+    for rel in list(root.findall(f"{{{RELATIONSHIPS_NS}}}Relationship")):
+        key = (rel.attrib.get("Type", ""), rel.attrib.get("Target", ""))
+        if key in seen:
+            root.remove(rel)
+        else:
+            seen.add(key)
+    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
 
 
 def _size_page_for_device_count(page: "vsdx.Page", device_count: int) -> None:

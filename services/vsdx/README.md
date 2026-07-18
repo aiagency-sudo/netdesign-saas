@@ -73,15 +73,32 @@ concern, once export *quality* is being judged, not just export
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload   # serves on http://127.0.0.1:8000
-pytest                          # 29 tests: models, builder, validator, API
+pytest                          # 32 tests: models, builder, validator, API
 ```
 
-## Known upstream issue worked around here
+## Known upstream issues worked around here
 
-`vsdx==0.6.1`'s `Connect.create()` builds `BegTrigger`/`EndTrigger` glue
-formulas with a string `.replace()` that drops a `.` (producing `Sheet1!`
-instead of `Sheet.1!`). `_fix_connector_trigger_formulas()` in
-`vsdx_builder.py` corrects this after every connector is created — the
-`<Connect>` elements vsdx itself round-trips on aren't affected, but a real
-Visio's live re-glue tracking likely is, so it's worth fixing rather than
-leaving in place.
+- **Duplicate `<Override>`/`<Relationship>` entries broke draw.io import.**
+  `vsdx==0.6.1`'s `Connect.create()` bootstraps the connector master's
+  `[Content_Types].xml` `<Override>` and `visio/_rels/document.xml.rels`
+  `<Relationship>` entries by checking `os.path.exists(page.vis._masters_folder)`
+  — a real-filesystem check that's never actually true in this in-memory-zip
+  flow, so the bootstrap re-runs and re-appends on *every single* connector
+  instead of only the first. A design with 5 link connectors (G1) ended up
+  with 6 duplicate `<Override>` entries for the same `PartName` — invalid
+  per the OPC spec (ECMA-376 Part 2 §10.1.2.2.1: at most one `Override` per
+  part) — even though `vsdx`'s own parser round-trips it without complaint.
+  draw.io's importer does not tolerate this and fails with "Cannot read
+  properties of null (reading 'getElementsByTagName')" on open.
+  `_dedupe_opc_metadata()` in `vsdx_builder.py` collapses both files to one
+  entry per part/relationship as a post-save pass, and
+  `structural_validator.py`'s `_check_opc_metadata_integrity()` independently
+  flags any duplicates that creep back in — regression-tested in
+  `tests/test_structural_validator.py` (`test_g1_and_g4_outputs_have_no_duplicate_opc_metadata`
+  and friends). Confirmed fixed by re-exporting G1 and checking
+  `[Content_Types].xml`/`document.xml.rels` by hand.
+- `Connect.create()` also builds `BegTrigger`/`EndTrigger` glue formulas with
+  a string `.replace()` that drops a `.` (producing `Sheet1!` instead of
+  `Sheet.1!`). `_fix_connector_trigger_formulas()` corrects this after every
+  connector is created — the `<Connect>` elements vsdx itself round-trips on
+  aren't affected, but a real Visio's live re-glue tracking likely is.

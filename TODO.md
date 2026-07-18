@@ -12,7 +12,7 @@ both pass as of the state below.
   CLAUDE.md): a FastAPI service, `POST /export` (design JSON in, `.vsdx`
   bytes out, `Content-Type: application/vnd.ms-visio.drawing`) and
   `GET /healthz`. Own venv at `services/vsdx/.venv`; `pip install -e ".[dev]"`
-  then `pytest` (29 tests). Not wired into the pnpm workspace — it's a
+  then `pytest` (32 tests). Not wired into the pnpm workspace — it's a
   separately-deployed Python service, so it stays outside `pnpm-workspace.yaml`.
   - `app/models.py`: pydantic mirror of `design-schema.json` (Python's
     counterpart to `packages/schema`'s zod validators). Strictly typed for
@@ -50,11 +50,22 @@ both pass as of the state below.
     composer's G1/G4 snapshot output (`packages/design-engine/test/golden/
     __snapshots__/`) — same golden scenarios, both languages, kept in sync
     by eye for now (no automated cross-language sync yet).
-  - Manually spot-checked: exported G1 to `.vsdx`, confirmed `file` IDs it as
-    "Microsoft Visio 2013+" and it round-trips through `vsdx.VisioFile()`
-    itself. **Not yet opened in real Visio/draw.io/LibreOffice** — that's
-    explicitly a human weekend-gate step (BUILD_PLAN Session 4), not
-    something to fake from this session.
+  - **Found and fixed a real bug via the weekend-gate check, mid-session**:
+    the founder tried opening the G1 export in draw.io and got "Cannot read
+    properties of null (reading 'getElementsByTagName')". Root cause:
+    `Connect.create()` re-bootstraps the connector master's
+    `[Content_Types].xml` `<Override>` and `document.xml.rels`
+    `<Relationship>` entries on *every* call (its existence check never
+    holds true in this in-memory-zip flow), so G1's 5 links produced 6
+    duplicate entries for the same masters `PartName` — invalid per the OPC
+    spec, tolerated by vsdx's own lenient parser but not by draw.io's.
+    Fixed with a post-save dedup pass (`_dedupe_opc_metadata()` in
+    `vsdx_builder.py`) plus a matching structural-validator check
+    (`_check_opc_metadata_integrity()`) so this can't silently regress. Full
+    writeup in `services/vsdx/README.md`. Re-exported G1/G4 after the fix
+    and hand-verified zero duplicate entries; **still needs the founder to
+    confirm the fixed file actually opens in draw.io** — that confirmation
+    hasn't happened yet as of this note.
 
 ## Next step (Session 4, per BUILD_PLAN.md)
 

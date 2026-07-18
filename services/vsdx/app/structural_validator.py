@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 
 import vsdx
@@ -23,6 +24,8 @@ from app.models import Design
 from app.vsdx_builder import renderable_links
 
 NS = vsdx.namespace
+CONTENT_TYPES_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+RELATIONSHIPS_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 
 REQUIRED_PARTS = [
     "[Content_Types].xml",
@@ -83,8 +86,38 @@ def validate_vsdx_structure(data: bytes, design: Design) -> StructuralValidation
         )
 
     errors.extend(_check_device_shape_data(shape_elements, design))
+    errors.extend(_check_opc_metadata_integrity(zf, names))
 
     return StructuralValidationResult(ok=len(errors) == 0, errors=errors)
+
+
+def _check_opc_metadata_integrity(zf: zipfile.ZipFile, names: set[str]) -> list[str]:
+    """Duplicate <Override>/<Relationship> entries are invalid per the OPC spec (ECMA-376
+    Part 2 §10.1.2.2.1) even though vsdx's own parser tolerates them — this is exactly the
+    class of bug that broke draw.io's importer with "Cannot read properties of null" on a
+    file vsdx itself round-tripped without complaint. See vsdx_builder._dedupe_opc_metadata."""
+    errors: list[str] = []
+
+    if "[Content_Types].xml" in names:
+        root = ET.fromstring(zf.read("[Content_Types].xml"))
+        part_names = [el.attrib.get("PartName", "") for el in root.findall(f"{CONTENT_TYPES_NS}Override")]
+        for part_name, count in Counter(part_names).items():
+            if count > 1:
+                errors.append(f'[Content_Types].xml has {count} <Override> entries for PartName="{part_name}" (must be at most 1).')
+
+    for name in sorted(names):
+        if not name.endswith(".rels"):
+            continue
+        root = ET.fromstring(zf.read(name))
+        keys = [
+            (rel.attrib.get("Type", ""), rel.attrib.get("Target", ""))
+            for rel in root.findall(f"{RELATIONSHIPS_NS}Relationship")
+        ]
+        for key, count in Counter(keys).items():
+            if count > 1:
+                errors.append(f'{name} has {count} <Relationship> entries for Type/Target={key} (should be deduplicated).')
+
+    return errors
 
 
 def _check_device_shape_data(shape_elements: list[ET.Element], design: Design) -> list[str]:
