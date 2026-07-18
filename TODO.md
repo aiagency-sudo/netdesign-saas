@@ -78,19 +78,19 @@ both pass as of the state below.
     Both are regression-tested in `structural_validator.py`
     (`_check_opc_metadata_integrity()`, `_check_no_generated_namespace_prefixes()`)
     and `tests/test_structural_validator.py`. Full writeup with the debugging
-    trail in `services/vsdx/README.md`. Re-exported G1/G4 after both fixes,
-    hand-verified zero duplicates and zero `nsN:` prefixes anywhere in either
-    file; **still needs the founder to confirm the fixed files actually open
-    in draw.io** — that confirmation hasn't happened yet as of this note.
+    trail in `services/vsdx/README.md`. **Confirmed by the founder: both G1
+    and G4 now open cleanly in draw.io.** Still not opened in real
+    Microsoft Visio or LibreOffice Draw — those are the other two
+    weekend-gate targets (see below) and haven't been tried yet.
 
 ## Next step (Session 4, per BUILD_PLAN.md)
 
-Wire engine → vsdx service end-to-end via a CLI script. Then the WEEKEND
-GATE: open the G1 and G4 exports in real Visio (or Visio web viewer),
-draw.io, and LibreOffice Draw. Judge: would you hand this to a client after
-≤15 min of cleanup? If no, Phase 0.5 (fixing export quality) comes before
-any UI work — see BUILD_PLAN.md's framing, this gate is the whole point of
-Phase 0.
+Wire engine → vsdx service end-to-end via a CLI script. Then finish the
+WEEKEND GATE: draw.io is confirmed clean (done mid-Session-3, see above) —
+still need real Visio (or Visio web viewer) and LibreOffice Draw. Judge:
+would you hand this to a client after ≤15 min of cleanup? If no, Phase 0.5
+(fixing export quality) comes before any UI work — see BUILD_PLAN.md's
+framing, this gate is the whole point of Phase 0.
 
 ## Notes / decisions made without asking (boring-option calls)
 
