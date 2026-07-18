@@ -1,0 +1,79 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden G4 smb-simple — full design composition > matches the recorded snapshot 1`] = `
+{
+  "devices": [
+    {
+      "hostname": "rtr-01",
+      "id": "rtr-01",
+      "loopback": "10.40.1.0/32",
+      "mgmtIp": "10.40.0.2",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "sw-01",
+      "id": "sw-01",
+      "mgmtIp": "10.40.0.3",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "fw-01",
+      "id": "fw-01",
+      "loopback": "10.40.1.1/32",
+      "mgmtIp": "10.40.0.4",
+      "role": "firewall",
+      "vendorHint": "fortinet-fortigate",
+    },
+  ],
+  "links": [
+    {
+      "a": "fw-01",
+      "b": "rtr-01",
+      "kind": "ethernet",
+      "label": "Firewall uplink",
+      "subnet": "10.40.1.2/31",
+    },
+    {
+      "a": "rtr-01",
+      "b": "sw-01",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+  ],
+  "meta": {
+    "assumptions": [
+      "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session.",
+    ],
+    "designPattern": "smb-flat",
+    "intentSummary": "Single-router SMB design with one access switch and an edge firewall serving corp and guest VLANs.",
+    "name": "G4 Small Office",
+    "warnings": [],
+  },
+  "routing": {
+    "defaultRoute": "0.0.0.0/0",
+    "firstHopRedundancy": "none",
+    "igp": "static",
+  },
+  "segments": [
+    {
+      "cidr": "10.40.2.0/24",
+      "dhcp": true,
+      "gateway": "10.40.2.1",
+      "name": "corp",
+      "purpose": "user",
+      "vlanId": 10,
+    },
+    {
+      "cidr": "10.40.3.0/24",
+      "dhcp": true,
+      "gateway": "10.40.3.1",
+      "name": "guest",
+      "purpose": "guest",
+      "vlanId": 20,
+    },
+  ],
+  "version": "1.0",
+}
+`;

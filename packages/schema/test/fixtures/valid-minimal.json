@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "meta": {
+    "name": "smb-simple-test",
+    "intentSummary": "Single router, single switch, single firewall SMB design.",
+    "designPattern": "smb-flat",
+    "assumptions": ["Single ISP uplink assumed."],
+    "warnings": []
+  },
+  "devices": [
+    {
+      "id": "rtr-01",
+      "hostname": "rtr-01",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+      "mgmtIp": "10.0.0.2",
+      "loopback": "10.0.0.10/32",
+      "interfaces": [
+        { "name": "eth0", "trunk": true, "allowedVlans": [10, 20], "description": "Uplink to sw-01" }
+      ]
+    },
+    {
+      "id": "sw-01",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+      "mgmtIp": "10.0.0.3"
+    },
+    {
+      "id": "fw-01",
+      "role": "firewall",
+      "vendorHint": "fortinet-fortigate",
+      "mgmtIp": "10.0.0.4"
+    }
+  ],
+  "links": [
+    { "a": "rtr-01", "b": "sw-01", "kind": "ethernet", "label": "trunk" },
+    { "a": "rtr-01", "b": "fw-01", "kind": "ethernet", "subnet": "10.0.1.0/31" }
+  ],
+  "segments": [
+    { "name": "corp-data", "vlanId": 10, "cidr": "10.0.10.0/24", "gateway": "10.0.10.1", "purpose": "user" },
+    { "name": "guest", "vlanId": 20, "cidr": "10.0.20.0/24", "gateway": "10.0.20.1", "purpose": "guest", "dhcp": true }
+  ],
+  "routing": {
+    "igp": "static",
+    "firstHopRedundancy": "none",
+    "defaultRoute": "0.0.0.0/0"
+  }
+}
