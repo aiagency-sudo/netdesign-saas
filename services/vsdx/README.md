@@ -35,7 +35,15 @@ borderless port-label shape near that end of the connector — a founder
 request after a first-draft diagram shipped with unlabeled links. Position
 is computed from the two device shapes' own coordinates (`_port_label_position()`
 in `vsdx_builder.py`), offset toward the link partner and clamped to never
-overshoot the midpoint on short links (e.g. adjacent grid cells).
+overshoot the midpoint on short links (e.g. adjacent grid cells). A
+device's links don't always point in different directions — e.g. every
+device in a grid layout's rightmost column points left toward everything
+else — so `_port_label_position()` also takes that interface's own `eth0/N`
+index and nudges perpendicular to the line by an amount that strictly grows
+with `N`, guaranteeing two labels at the same device can never land on the
+same point (a real bug caught by founder review: G1's `sw-02` had its
+`rtr-02`-facing and `sw-01`-facing labels compute to an identical
+coordinate, silently hiding one under the other).
 
 VLAN/segment data is accepted (and validated) but not yet drawn onto the
 diagram — out of scope for this session; see TODO.md.

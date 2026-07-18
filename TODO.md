@@ -13,7 +13,7 @@ state below.
   CLAUDE.md): a FastAPI service, `POST /export` (design JSON in, `.vsdx`
   bytes out, `Content-Type: application/vnd.ms-visio.drawing`) and
   `GET /healthz`. Own venv at `services/vsdx/.venv`; `pip install -e ".[dev]"`
-  then `pytest` (40 tests). Not wired into the pnpm workspace — it's a
+  then `pytest` (42 tests). Not wired into the pnpm workspace — it's a
   separately-deployed Python service, so it stays outside `pnpm-workspace.yaml`.
   - `app/models.py`: pydantic mirror of `design-schema.json` (Python's
     counterpart to `packages/schema`'s zod validators). Strictly typed for
@@ -137,29 +137,38 @@ state below.
     snapshot output exactly (interface-suffixed links + `interfaces[]`).
   - Verified end-to-end via `pnpm generate -- --fixture g1|g4` against a
     locally running vsdx service; sent both exports to the founder for
-    visual confirmation — **response pending as of this note.**
+    visual confirmation — **confirmed good**, with one bug found on review:
+    `sw-02` (rightmost device in G1's grid row) had its `rtr-02`-facing and
+    `sw-01`-facing port labels compute to the *exact same coordinate* —
+    `_port_label_position()` only considered one link's direction at a
+    time, and both of `sw-02`'s links happen to point left (everything else
+    in the row is to its left). One label silently hid the other. Fixed by
+    passing each interface's own `eth0/N` index into
+    `_port_label_position()` and nudging perpendicular to the line by an
+    amount that strictly grows with `N` — two labels at the same device can
+    no longer land on the same point, regardless of how their directions
+    compare. 5 new tests (2 regression tests for the exact bug, 3 for the
+    jitter behavior itself); 42 Python tests total. Re-verified end-to-end
+    and re-sent both exports — **this second round's founder confirmation
+    is what's pending**, not blocking Session 6's start.
 
-## Next step (Session 6, per BUILD_PLAN.md)
+## Next step (Session 6, per BUILD_PLAN.md Sessions 5-6)
 
-**Phase 0 is done** (weekend gate passed all 3 targets — see Session 4
-notes above) **and port names are shipped.** Founder raised a second,
-explicitly deferred concern: integrating real stencils for
-routers/switches/firewalls instead of generic colored rectangles — decided
-against pulling proprietary Microsoft/Cisco stencils (licensing + fragility,
-see the Connect.create() master-copying saga above), leaning toward
-hand-built vendor-neutral vector icon shapes over embedded raster/SVG
-images, but this needs the founder's actual decision before building
-anything — see the two options laid out in conversation, not yet written
-down here as a firm plan.
+**Phase 0 is done and port names are shipped.** Founder gave the green
+light to start Phase 1: "Build the Next.js app: Supabase auth (email magic
+link), projects table, a prompt page that calls the pipeline, and a React
+Flow canvas rendering the design JSON with role-based node icons and zone
+grouping. Deploy to Vercel; deploy services/vsdx to Railway." This is the
+first work in `apps/web` — nothing there yet, first time this repo needs
+external service credentials (Supabase, Vercel, Railway) instead of just
+local/CI-only tooling.
 
-Otherwise: the remaining judgment call from BUILD_PLAN's weekend gate —
-"would you hand this to a client after ≤15 min of cleanup?" — is the
-founder's; note the answer here once settled. Assuming yes: Phase 1 starts,
-BUILD_PLAN Sessions 5-6 — "Build the Next.js app: Supabase auth (email
-magic link), projects table, a prompt page that calls the pipeline, and a
-React Flow canvas rendering the design JSON with role-based node icons and
-zone grouping. Deploy to Vercel; deploy services/vsdx to Railway." This is
-the first session that touches `apps/web` — nothing there yet.
+Still separately open, deliberately not blocking Phase 1: real stencils for
+routers/switches/firewalls instead of generic colored rectangles. Leaning
+against proprietary Microsoft/Cisco stencils (licensing + the
+`Connect.create()` master-copying fragility already seen once), toward
+hand-built vendor-neutral vector icon shapes over embedded raster/SVG — but
+this is the founder's call, not decided.
 
 ## Notes / decisions made without asking (boring-option calls)
 

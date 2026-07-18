@@ -84,19 +84,39 @@ class TestGoldenScenarios:
 
 
 class TestPortLabelPosition:
-    def test_sits_offset_from_the_near_shape_toward_the_far_shape(self):
-        x, y = _port_label_position((0.0, 0.0), (10.0, 0.0))
+    def test_sits_offset_from_the_near_shape_toward_the_far_shape_at_index_zero(self):
+        x, y = _port_label_position((0.0, 0.0), (10.0, 0.0), 0)
         assert x == pytest.approx(0.9)  # PORT_LABEL_OFFSET_IN, along the +x direction
-        assert y == pytest.approx(0.0)
+        assert y == pytest.approx(0.0)  # index 0 gets no perpendicular jitter
 
     def test_never_overshoots_past_the_midpoint_on_a_short_link(self):
         # shapes only 1 inch apart — a full 0.9in offset would nearly reach the far shape,
         # so the label should clamp to the midpoint (45% of the way there) instead.
-        x, _y = _port_label_position((0.0, 0.0), (1.0, 0.0))
+        x, _y = _port_label_position((0.0, 0.0), (1.0, 0.0), 0)
         assert x == pytest.approx(0.45)
 
     def test_handles_coincident_shapes_without_dividing_by_zero(self):
-        assert _port_label_position((3.0, 3.0), (3.0, 3.0)) == (3.0, 3.0)
+        assert _port_label_position((3.0, 3.0), (3.0, 3.0), 0) == (3.0, 3.0)
+
+    def test_nonzero_index_nudges_perpendicular_to_the_line(self):
+        # near->far is along +x, so the perpendicular direction is +/-y.
+        x0, y0 = _port_label_position((0.0, 0.0), (10.0, 0.0), 0)
+        x1, y1 = _port_label_position((0.0, 0.0), (10.0, 0.0), 1)
+        assert x1 == pytest.approx(x0)  # same point along the line...
+        assert y1 != pytest.approx(y0)  # ...but nudged off it
+
+    def test_two_links_pointing_the_same_direction_from_one_device_never_collide(self):
+        """Regression test for the real bug: G1's sw-02 has two links (to rtr-02, to
+        sw-01) that both point left from sw-02's position, so their near-sw-02 labels
+        computed to the exact same coordinate at index 0 for both — one silently hid
+        the other. Each device's links get distinct sequential indices (its own eth0/N
+        numbering), so as long as callers pass those indices through, this can't recur."""
+        near = (9.25, 10.31791338582677)
+        far_a = (4.25, 10.31791338582677)  # rtr-02, straight left
+        far_b = (6.75, 10.31791338582677)  # sw-01, also straight left
+        label_a = _port_label_position(near, far_a, 0)
+        label_b = _port_label_position(near, far_b, 1)
+        assert label_a != label_b
 
 
 class TestPortLabels:

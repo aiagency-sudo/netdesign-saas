@@ -289,17 +289,39 @@ def _add_port_labels(page: "vsdx.Page", link: Link, shape_by_device_id: dict[str
     to_shape = shape_by_device_id[to_id]
 
     if interface_a:
-        x, y = _port_label_position(from_shape.center_x_y, to_shape.center_x_y)
+        x, y = _port_label_position(from_shape.center_x_y, to_shape.center_x_y, _interface_index(interface_a))
         _add_port_label(page, x, y, interface_a)
     if interface_b:
-        x, y = _port_label_position(to_shape.center_x_y, from_shape.center_x_y)
+        x, y = _port_label_position(to_shape.center_x_y, from_shape.center_x_y, _interface_index(interface_b))
         _add_port_label(page, x, y, interface_b)
 
 
-def _port_label_position(near_xy: tuple[float, float], far_xy: tuple[float, float]) -> tuple[float, float]:
+def _interface_index(interface_name: str) -> int:
+    """"eth0/3" -> 3. Falls back to 0 (no jitter) for a name that doesn't end in a number —
+    defensive only; every name this module itself assigns follows the eth0/N convention."""
+    try:
+        return int(interface_name.rsplit("/", 1)[-1])
+    except ValueError:
+        return 0
+
+
+PORT_LABEL_JITTER_STEP_IN = 0.18
+
+
+def _port_label_position(near_xy: tuple[float, float], far_xy: tuple[float, float], index: int) -> tuple[float, float]:
     """A point PORT_LABEL_OFFSET_IN from `near_xy`, along the line toward `far_xy` — just
     outside the near shape's edge — but never more than halfway there, so labels on very
-    short links (e.g. two adjacent grid cells) don't overshoot past the midpoint."""
+    short links (e.g. two adjacent grid cells) don't overshoot past the midpoint.
+
+    A device's links don't all point in different directions — e.g. every device in a grid
+    layout's rightmost column points left toward everything else — so two labels near the
+    same device can land on the exact same point (confirmed: G1's sw-02 has both its
+    rtr-02-facing and sw-01-facing labels compute to an identical coordinate, silently
+    hiding one underneath the other). `index` is that interface's own eth0/N number at this
+    device, which is already unique per device by construction, so nudging perpendicular to
+    the line by an amount that strictly grows with `index` (0, 1, -1, 2, -2, ...) guarantees
+    two labels at the same device never coincide, regardless of how their directions compare.
+    """
     nx, ny = near_xy
     fx, fy = far_xy
     dx, dy = fx - nx, fy - ny
@@ -307,7 +329,14 @@ def _port_label_position(near_xy: tuple[float, float], far_xy: tuple[float, floa
     if distance < 1e-6:
         return nx, ny
     t = min(PORT_LABEL_OFFSET_IN / distance, 0.45)
-    return nx + dx * t, ny + dy * t
+    base_x, base_y = nx + dx * t, ny + dy * t
+
+    if index == 0:
+        return base_x, base_y
+    perp_x, perp_y = -dy / distance, dx / distance
+    magnitude = index * PORT_LABEL_JITTER_STEP_IN
+    sign = 1 if index % 2 == 0 else -1
+    return base_x + perp_x * magnitude * sign, base_y + perp_y * magnitude * sign
 
 
 def _add_port_label(page: "vsdx.Page", pin_x: float, pin_y: float, text: str) -> None:
