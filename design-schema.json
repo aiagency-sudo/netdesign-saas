@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://netdesign.ai/schemas/design/v1",
+  "title": "NetDesign AI — Vendor-Neutral Network Design",
+  "description": "The contract between LLM extraction, the design engine, the diagram renderer, the vsdx exporter, and per-vendor config generators. Version with care.",
+  "type": "object",
+  "required": ["version", "meta", "devices", "links", "segments"],
+  "properties": {
+    "version": { "const": "1.0" },
+    "meta": {
+      "type": "object",
+      "required": ["name", "intentSummary"],
+      "properties": {
+        "name": { "type": "string" },
+        "intentSummary": { "type": "string", "description": "1-2 sentence restatement of user intent; shown for confirmation" },
+        "designPattern": { "type": "string", "enum": ["branch-office", "campus-collapsed-core", "campus-three-tier", "dc-leaf-spine", "smb-flat", "dmz-edge", "hybrid-cloud", "custom"] },
+        "assumptions": { "type": "array", "items": { "type": "string" }, "description": "Everything the engine assumed that the user did not state — always surfaced in the HLD" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "devices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "role", "vendorHint"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$", "description": "e.g. core-rtr-01" },
+          "hostname": { "type": "string" },
+          "role": { "type": "string", "enum": ["router", "core-switch", "distribution-switch", "access-switch", "firewall", "load-balancer", "wireless-controller", "access-point", "server", "cloud-gateway", "vpn-concentrator", "reverse-proxy", "internet", "generic"] },
+          "vendorHint": { "type": "string", "enum": ["cisco-ios", "cisco-iosxe", "cisco-nxos", "fortinet-fortigate", "paloalto-panos", "aruba-aoscx", "hpe-comware", "arista-eos", "f5-tmos", "juniper-junos", "aws", "azure", "gcp", "generic"], "description": "Drives config-gen template selection AND vsdx stencil choice" },
+          "model": { "type": "string" },
+          "mgmtIp": { "type": "string", "format": "ipv4" },
+          "loopback": { "type": "string", "description": "CIDR, engine-assigned" },
+          "redundancyGroup": { "type": "string", "description": "Devices sharing HSRP/VRRP/HA pair id" },
+          "zone": { "type": "string", "description": "Security zone: inside/outside/dmz/guest/..." },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string", "description": "Vendor-neutral: eth0/1 — templates map to Gi0/1, port1, ethernet1/1 etc." },
+                "ip": { "type": "string", "description": "CIDR" },
+                "vlan": { "type": "integer" },
+                "trunk": { "type": "boolean" },
+                "allowedVlans": { "type": "array", "items": { "type": "integer" } },
+                "description": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["a", "b"],
+        "properties": {
+          "a": { "type": "string", "description": "deviceId or deviceId:interface" },
+          "b": { "type": "string" },
+          "kind": { "type": "string", "enum": ["ethernet", "fiber", "port-channel", "wan", "vpn-tunnel", "wireless", "virtual"] },
+          "subnet": { "type": "string", "description": "P2P CIDR (/30 or /31), engine-assigned" },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "description": "VLANs / subnets / cloud subnets",
+      "items": {
+        "type": "object",
+        "required": ["name", "cidr"],
+        "properties": {
+          "name": { "type": "string" },
+          "vlanId": { "type": "integer", "minimum": 1, "maximum": 4094 },
+          "cidr": { "type": "string" },
+          "gateway": { "type": "string" },
+          "zone": { "type": "string" },
+          "purpose": { "type": "string", "enum": ["user", "voice", "guest", "management", "server", "dmz", "transit", "storage", "iot", "other"] },
+          "dhcp": { "type": "boolean" }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "igp": { "type": "string", "enum": ["ospf", "eigrp", "isis", "static", "none"] },
+        "ospfAreas": { "type": "array", "items": { "type": "object", "properties": { "area": { "type": "string" }, "deviceIds": { "type": "array", "items": { "type": "string" } } } } },
+        "bgp": { "type": "object", "properties": { "asn": { "type": "integer" }, "peers": { "type": "array", "items": { "type": "object", "properties": { "deviceId": { "type": "string" }, "peerIp": { "type": "string" }, "remoteAsn": { "type": "integer" } } } } } },
+        "firstHopRedundancy": { "type": "string", "enum": ["hsrp", "vrrp", "glbp", "none"] },
+        "defaultRoute": { "type": "string" }
+      }
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "zonePolicies": { "type": "array", "items": { "type": "object", "required": ["from", "to", "action"], "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "action": { "type": "string", "enum": ["allow", "deny", "inspect"] }, "services": { "type": "array", "items": { "type": "string" } } } } },
+        "natRules": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["snat-overload", "static", "dnat"] }, "inside": { "type": "string" }, "outside": { "type": "string" } } } }
+      }
+    },
+    "cloud": {
+      "type": "object",
+      "description": "Present for hybrid/full cloud designs; rendered to Terraform, not CLI",
+      "properties": {
+        "provider": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+        "vpcs": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "cidr": { "type": "string" }, "subnets": { "type": "array", "items": { "type": "string" } } } } },
+        "connectivity": { "type": "string", "enum": ["site-to-site-vpn", "direct-connect", "expressroute", "sd-wan"] }
+      }
+    }
+  }
+}
