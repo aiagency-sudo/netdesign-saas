@@ -5,7 +5,7 @@ Read this first each session. Repo is green: `pnpm test` / `pnpm test:golden`
 `services/vsdx`'s `pytest` (Python, separate venv) both pass as of the
 state below.
 
-## Where things stand (after Session 4, first half)
+## Where things stand (after Session 4 — Phase 0 complete)
 
 - TS workspace unchanged in shape from Session 2: `packages/schema`,
   `packages/design-engine`, `packages/llm-extraction`. 79 tests, all green.
@@ -79,14 +79,11 @@ state below.
     Both are regression-tested in `structural_validator.py`
     (`_check_opc_metadata_integrity()`, `_check_no_generated_namespace_prefixes()`)
     and `tests/test_structural_validator.py`. Full writeup with the debugging
-    trail in `services/vsdx/README.md`. **Confirmed by the founder: both G1
-    and G4 open cleanly in draw.io AND LibreOffice Draw.** Real Microsoft
-    Visio not tested — founder doesn't have a license/install. BUILD_PLAN's
-    weekend-gate line explicitly allows "(or Visio web viewer)" as a
-    substitute (e.g. uploading to OneDrive, which renders .vsdx in-browser
-    with a free Microsoft account, no paid Visio needed) — not done yet,
-    founder's call whether to pursue it or treat 2/3 real-world opens as
-    sufficient confidence to close this gate.
+    trail in `services/vsdx/README.md`. **WEEKEND GATE: all 3 targets
+    confirmed clean by the founder** — draw.io, LibreOffice Draw, and real
+    Microsoft Visio (via OneDrive's free web viewer, substituting for a
+    desktop license per BUILD_PLAN's "(or Visio web viewer)" allowance).
+    G1 and G4 both open without errors in all three.
 - **`scripts/generate-design.ts`** (new — BUILD_PLAN Session 4's "wire
   engine → vsdx service end-to-end via a CLI script"): `pnpm generate --
   --fixture g1|g4` composes a golden scenario directly (no LLM call, no
@@ -108,18 +105,20 @@ state below.
   this environment) but its error-guard path (missing key, `--prose` +
   `--fixture` both given) was.
 
-## Next step (Session 4, remainder — per BUILD_PLAN.md)
+## Next step (Session 5, per BUILD_PLAN.md)
 
-The CLI wiring is done, and 2/3 of the WEEKEND GATE targets are confirmed
-clean: draw.io and LibreOffice Draw both open G1/G4 without error. Real
-Microsoft Visio is the one untested leg — no license available; BUILD_PLAN
-allows the free Visio web viewer (OneDrive upload) as a substitute if the
-founder wants to close this out fully. Otherwise: judge on what's already
-confirmed — would you hand this to a client after ≤15 min of cleanup? If
-no, Phase 0.5 (fixing export quality) comes before any UI work; if yes,
-proceed to Phase 1 (BUILD_PLAN Sessions 5-6: Next.js app, Supabase auth,
-React Flow canvas) — see BUILD_PLAN.md's framing, this gate is the whole
-point of Phase 0.
+**Phase 0 is done.** The CLI wiring (`scripts/generate-design.ts`) works
+end-to-end, and the WEEKEND GATE passed clean on all 3 targets (draw.io,
+LibreOffice Draw, Visio via OneDrive). The remaining judgment call from
+BUILD_PLAN's gate — "would you hand this to a client after ≤15 min of
+cleanup?" — is the founder's, not something to self-certify here; note the
+answer in this file next session if it hasn't been settled explicitly.
+Assuming yes: Phase 1 starts, BUILD_PLAN Sessions 5-6 — "Build the Next.js
+app: Supabase auth (email magic link), projects table, a prompt page that
+calls the pipeline, and a React Flow canvas rendering the design JSON with
+role-based node icons and zone grouping. Deploy to Vercel; deploy
+services/vsdx to Railway." This is the first session that touches
+`apps/web` — nothing there yet.
 
 ## Notes / decisions made without asking (boring-option calls)
 
