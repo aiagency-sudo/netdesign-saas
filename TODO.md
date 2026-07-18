@@ -1,10 +1,11 @@
 # TODO — NetDesign AI
 
 Read this first each session. Repo is green: `pnpm test` / `pnpm test:golden`
-(TypeScript workspace) and `services/vsdx`'s `pytest` (Python, separate venv)
-both pass as of the state below.
+/ `pnpm typecheck` (TypeScript workspace, now including `scripts/`) and
+`services/vsdx`'s `pytest` (Python, separate venv) both pass as of the
+state below.
 
-## Where things stand (after Session 3)
+## Where things stand (after Session 4, first half)
 
 - TS workspace unchanged in shape from Session 2: `packages/schema`,
   `packages/design-engine`, `packages/llm-extraction`. 79 tests, all green.
@@ -82,15 +83,36 @@ both pass as of the state below.
     and G4 now open cleanly in draw.io.** Still not opened in real
     Microsoft Visio or LibreOffice Draw — those are the other two
     weekend-gate targets (see below) and haven't been tried yet.
+- **`scripts/generate-design.ts`** (new — BUILD_PLAN Session 4's "wire
+  engine → vsdx service end-to-end via a CLI script"): `pnpm generate --
+  --fixture g1|g4` composes a golden scenario directly (no LLM call, no
+  `ANTHROPIC_API_KEY` needed — the params are inlined in the script, not
+  imported from test/ code) or `pnpm generate -- --prose "<text>"` runs the
+  full `user prose → design-params → design JSON` pipeline via
+  `@netdesign/llm-extraction`, then POSTs the result to a running
+  `services/vsdx` instance's `/export` and writes the `.vsdx` to disk
+  (`--out`; `--design-json-out` to also dump the intermediate JSON).
+  Clear, human-readable errors for the two obvious failure modes: vsdx
+  service unreachable (with the exact command to start it) and missing
+  `ANTHROPIC_API_KEY`. Root `package.json` gained a `dependencies` block
+  (workspace packages) and a `tsconfig.json` (so `pnpm typecheck` covers
+  `scripts/` too, via `tsc -p tsconfig.json --noEmit` after the per-package
+  loop) — first time either was needed at the root. Verified for real:
+  started the vsdx service locally, ran both `--fixture g1` and `--fixture
+  g4` end-to-end, and confirmed the resulting `.vsdx` files pass
+  `validate_vsdx_structure()`. `--prose` wasn't live-tested (no API key in
+  this environment) but its error-guard path (missing key, `--prose` +
+  `--fixture` both given) was.
 
-## Next step (Session 4, per BUILD_PLAN.md)
+## Next step (Session 4, remainder — per BUILD_PLAN.md)
 
-Wire engine → vsdx service end-to-end via a CLI script. Then finish the
-WEEKEND GATE: draw.io is confirmed clean (done mid-Session-3, see above) —
-still need real Visio (or Visio web viewer) and LibreOffice Draw. Judge:
-would you hand this to a client after ≤15 min of cleanup? If no, Phase 0.5
-(fixing export quality) comes before any UI work — see BUILD_PLAN.md's
-framing, this gate is the whole point of Phase 0.
+The CLI wiring is done (see above). What's left of the WEEKEND GATE: draw.io
+is confirmed clean — still need real Visio (or Visio web viewer) and
+LibreOffice Draw on the G1/G4 exports (`pnpm generate -- --fixture g1` /
+`g4` regenerates them any time). Judge: would you hand this to a client
+after ≤15 min of cleanup? If no, Phase 0.5 (fixing export quality) comes
+before any UI work — see BUILD_PLAN.md's framing, this gate is the whole
+point of Phase 0.
 
 ## Notes / decisions made without asking (boring-option calls)
 
@@ -111,3 +133,15 @@ framing, this gate is the whole point of Phase 0.
   field on the device" — `interfaces[]` isn't flattened into shape data
   since it's a list, not a scalar, and doesn't have an obvious single-value
   representation in a custom property.
+- `scripts/generate-design.ts`'s G1/G4 presets are copy-pasted from
+  `packages/design-engine/test/golden/fixtures/`, not imported — a script
+  meant to be run by a human (and to prove the pipeline works from outside
+  the test suite) shouldn't depend on test-only code. Accepted the small
+  duplication/drift risk over that coupling.
+- Root `package.json` needed `@types/node` for the first time (nothing
+  before `scripts/` used Node built-ins/`process` in code that TS actually
+  type-checked from the repo root — `packages/llm-extraction`'s own
+  `process.env` usage typechecks fine standalone because `@types/node`
+  comes in transitively via `@anthropic-ai/sdk`'s own dependency tree,
+  which isn't visible from the root). Pinned to `^22` to match the Node
+  version this environment and Node 22+ deploy targets actually run.
