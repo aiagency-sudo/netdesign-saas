@@ -1,0 +1,123 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden G1 branch-office — full design composition > matches the recorded snapshot 1`] = `
+{
+  "devices": [
+    {
+      "hostname": "rtr-01",
+      "id": "rtr-01",
+      "loopback": "10.30.1.0/32",
+      "mgmtIp": "10.30.0.2",
+      "redundancyGroup": "hsrp-1",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "rtr-02",
+      "id": "rtr-02",
+      "loopback": "10.30.1.1/32",
+      "mgmtIp": "10.30.0.3",
+      "redundancyGroup": "hsrp-1",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "sw-01",
+      "id": "sw-01",
+      "mgmtIp": "10.30.0.4",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "sw-02",
+      "id": "sw-02",
+      "mgmtIp": "10.30.0.5",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "fw-01",
+      "id": "fw-01",
+      "loopback": "10.30.1.2/32",
+      "mgmtIp": "10.30.0.6",
+      "role": "firewall",
+      "vendorHint": "fortinet-fortigate",
+    },
+  ],
+  "links": [
+    {
+      "a": "fw-01",
+      "b": "rtr-01",
+      "kind": "ethernet",
+      "label": "Firewall uplink",
+      "subnet": "10.30.1.4/31",
+    },
+    {
+      "a": "fw-01",
+      "b": "rtr-02",
+      "kind": "ethernet",
+      "label": "Firewall uplink",
+      "subnet": "10.30.1.6/31",
+    },
+    {
+      "a": "rtr-01",
+      "b": "sw-01",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "rtr-02",
+      "b": "sw-02",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "sw-01",
+      "b": "sw-02",
+      "kind": "port-channel",
+      "label": "Switch interlink",
+    },
+  ],
+  "meta": {
+    "assumptions": [
+      "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session.",
+    ],
+    "designPattern": "branch-office",
+    "intentSummary": "Branch office with dual HSRP routers, two access switches, and an edge firewall serving three VLANs.",
+    "name": "G1 Branch Office",
+    "warnings": [],
+  },
+  "routing": {
+    "defaultRoute": "0.0.0.0/0",
+    "firstHopRedundancy": "hsrp",
+    "igp": "static",
+  },
+  "segments": [
+    {
+      "cidr": "10.30.2.0/24",
+      "dhcp": true,
+      "gateway": "10.30.2.1",
+      "name": "corp-data",
+      "purpose": "user",
+      "vlanId": 10,
+    },
+    {
+      "cidr": "10.30.3.0/24",
+      "dhcp": true,
+      "gateway": "10.30.3.1",
+      "name": "voice",
+      "purpose": "voice",
+      "vlanId": 20,
+    },
+    {
+      "cidr": "10.30.4.0/24",
+      "dhcp": true,
+      "gateway": "10.30.4.1",
+      "name": "guest",
+      "purpose": "guest",
+      "vlanId": 30,
+    },
+  ],
+  "version": "1.0",
+}
+`;

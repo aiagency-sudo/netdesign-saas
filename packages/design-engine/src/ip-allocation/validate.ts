@@ -1,3 +1,4 @@
+import type { Design } from "@netdesign/schema";
 import { parseCidr } from "./cidr.js";
 import type { IpAllocationPlan } from "./plan.js";
 
@@ -16,6 +17,35 @@ export function flattenPlanCidrs(plan: IpAllocationPlan): Array<{ label: string;
   }
 
   return entries;
+}
+
+/**
+ * Every address a composed Design handed out, labeled by where it came
+ * from — mgmt IPs are treated as implicit /32s so they're checked against
+ * loopbacks/P2P/VLAN ranges too, since they all come from the same pool.
+ */
+export function flattenDesignCidrs(design: Design): Array<{ label: string; cidr: string }> {
+  const entries: Array<{ label: string; cidr: string }> = [];
+
+  for (const device of design.devices) {
+    if (device.mgmtIp) entries.push({ label: `mgmtIp:${device.id}`, cidr: `${device.mgmtIp}/32` });
+    if (device.loopback) entries.push({ label: `loopback:${device.id}`, cidr: device.loopback });
+  }
+  design.links.forEach((link, index) => {
+    if (link.subnet) entries.push({ label: `link:${link.a}--${link.b}#${index}`, cidr: link.subnet });
+  });
+  for (const segment of design.segments) {
+    entries.push({ label: `segment:${segment.name}`, cidr: segment.cidr });
+  }
+
+  return entries;
+}
+
+/** Convenience wrapper: {@link flattenDesignCidrs} piped through {@link findOverlappingPairs}. */
+export function findOverlappingSubnetsInDesign(
+  design: Design,
+): Array<[{ label: string; cidr: string }, { label: string; cidr: string }]> {
+  return findOverlappingPairs(flattenDesignCidrs(design));
 }
 
 /** Returns every pair of labeled CIDRs whose address ranges intersect. An empty array means the set is overlap-free. */

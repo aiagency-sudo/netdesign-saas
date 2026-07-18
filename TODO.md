@@ -3,58 +3,101 @@
 Read this first each session. Repo is green: `pnpm test` and `pnpm test:golden`
 both pass as of the state below.
 
-## Where things stand (after Session 1)
+## Where things stand (after Session 2)
 
-- pnpm workspace scaffolded at the repo root (`pnpm-workspace.yaml`,
-  root `package.json` with `build`/`test`/`test:golden`/`typecheck`/`lint`
-  scripts, shared `tsconfig.base.json` — strict TS, NodeNext ESM).
-- `packages/schema`: `design-schema.json` (moved here from the repo root —
-  this package now owns it) + hand-authored zod validators mirroring it
-  1:1 (`src/zod/*.ts`, assembled in `src/zod/design.ts`). `parseDesign()` /
-  `safeParseDesign()` are the two entry points; `parseDesign()` throws
-  `DesignValidationError` with a human-readable per-field message (CLAUDE.md
-  hard rule 1: "fail loudly with a human-readable reason"). A
-  `schema-drift-guard.test.ts` cross-checks every zod enum and the top-level
-  `required` list against the raw JSON schema at test time, so an edit to
-  `design-schema.json` that isn't mirrored in the zod schemas fails CI
-  immediately instead of drifting silently.
-- `packages/design-engine`: first rule module, deterministic IP allocation
-  (`src/ip-allocation/`). `SubnetAllocator` is a first-fit, block-aligned
-  allocator over one supernet; `planIpAllocation()` uses it in a fixed order
-  — mgmt `/24` → loopbacks `/32` (L3-capable roles only) → P2P `/31`s
-  (ethernet/fiber/port-channel links between two L3-capable devices only) →
-  VLAN segments `/24` (default, overridable per segment). Full rule writeup
-  lives in `packages/design-engine/README.md` (the file CLAUDE.md's IP
-  addressing rule points at).
-- Golden scenario **G1 (branch-office)** is encoded as a fixture
-  (`packages/design-engine/test/golden/fixtures/g1-branch-office.ts`) and
-  proven overlap-free via `findOverlappingPairs()` in
-  `test/golden/g1-branch-office.test.ts`, plus exact-value assertions for
-  every mgmt/loopback/P2P/VLAN address. `pnpm test:golden` runs it.
-- 42 tests total, all green. No LLM code yet, no vsdx service yet, no app yet.
+- pnpm workspace: `packages/schema`, `packages/design-engine`,
+  `packages/llm-extraction`. Root `build`/`test`/`test:golden`/`typecheck`
+  always build first (TS project references across the workspace).
+- `packages/schema`: `design-schema.json` + zod validators (`designSchema`,
+  `parseDesign()`/`safeParseDesign()`, `DesignValidationError`), plus a new
+  **`designParamsSchema`** (`src/zod/design-params.ts`) — the intermediate
+  contract between LLM extraction and the design-engine composer. It's
+  deliberately narrower than the final design schema and its
+  `designPattern` enum only allows `"branch-office"` / `"smb-flat"`, the two
+  patterns the composer can build today. `schema-drift-guard.test.ts` still
+  only guards `designSchema` against `design-schema.json`; `designParamsSchema`
+  has no external JSON-schema counterpart so it doesn't need one.
+- `packages/design-engine`:
+  - `ip-allocation/` unchanged from Session 1 (`SubnetAllocator`,
+    `planIpAllocation`), plus a new `findOverlappingSubnetsInDesign(design)`
+    in `validate.ts` — the same zero-overlap check as before, but over a
+    *composed* Design's mgmt IPs (treated as /32), loopbacks, link subnets,
+    and VLAN CIDRs, instead of a raw `IpAllocationPlan`.
+  - **`compose/branch-office.ts`** (new): `composeBranchOfficeDesign(params:
+    DesignParams): Design`. Builds routers/switches/an optional firewall,
+    wires firewall↔router and router↔switch (round-robin when counts don't
+    match) and switch↔switch interlink links, assigns VLAN ids sequentially,
+    calls `planIpAllocation`, merges addressing back into devices/links/
+    segments, and **always returns `parseDesign()`'s validated output or
+    throws** — the schema-validation gate lives here per CLAUDE.md hard rule
+    1. Despite the name it serves both `branch-office` and `smb-flat`
+    params — same topology shape, different device counts; see the doc
+    comment on the function for why one composer, not two.
+- `packages/llm-extraction` (new package): the Claude API call.
+  - `client.ts`: a narrow `ExtractionClient` interface (`createMessage`) so
+    everything is testable with a fake client, no network/API key needed in
+    tests. `createAnthropicExtractionClient()` is the real implementation,
+    lazily importing `@anthropic-ai/sdk` so that import (and the
+    `ANTHROPIC_API_KEY` requirement) only bites the code path that actually
+    calls Claude.
+  - `prompt.ts`: system prompt + **3 few-shot examples** (prose + expected
+    tool input, each parsed through `designParamsSchema` at module load so a
+    typo fails immediately). The Claude tool's `input_schema` is derived
+    from `designParamsSchema` via `zod-to-json-schema` — one source of
+    truth, no hand-duplicated JSON schema to drift.
+  - `extract.ts`: `extractDesignParams()` forces the tool call
+    (`tool_choice`), `parseExtractionResponse()` is split out as a pure,
+    client-free function and throws `DesignParamsExtractionError` with a
+    human-readable reason (no tool_use block, or validation failure).
+  - `generate.ts`: `generateBranchOfficeDesign(prose, { client })` — chains
+    extraction → `composeBranchOfficeDesign`. This is the
+    `user prose → design-params → design JSON` pipeline CLAUDE.md describes,
+    minus the not-yet-built apps/web wiring around it.
+  - Model default is `claude-sonnet-5`; override via `{ model }`.
+- Golden scenarios **G1** (branch-office: 2 routers HSRP, 2 switches, 1
+  firewall, 3 VLANs) and **G4** (smb-flat: 1 router, 1 switch, 1 firewall,
+  corp+guest VLANs) now have design-params fixtures
+  (`packages/design-engine/test/golden/fixtures/g{1,4}-*-params.ts`) run
+  through `composeBranchOfficeDesign` with snapshot tests
+  (`compose-g1-branch-office.test.ts`, `compose-g4-smb-simple.test.ts`),
+  each also asserting zero subnet overlap and determinism. (G1's original
+  ip-allocation-only fixture/test from Session 1 is untouched and still
+  passes — it exercises `planIpAllocation` directly, one level down from
+  the new composer-level tests.)
+- 79 tests total, all green. No apps/web yet, no vsdx service yet.
 
-## Next step (Session 2, per BUILD_PLAN.md)
+## Next step (Session 3, per BUILD_PLAN.md)
 
-Build the LLM extraction module: a Claude API call that turns user prose into
-design-params JSON (few-shot, 3 examples), then have the design engine
-compose a full design JSON for the `branch-office` pattern from those params
-(wiring `planIpAllocation` output back into device `mgmtIp`/`loopback`, link
-`subnet`, and segment `cidr`/`gateway` fields). Validate the composed output
-against `designSchema` from `@netdesign/schema`. Add G1 and G4 as
-fixture+snapshot tests for the full prose → design JSON path (not just IP
-allocation in isolation, which G1 already covers).
+Create `services/vsdx`: a FastAPI service with `POST /export` taking design
+JSON, using the `vsdx` Python library to build a diagram — shapes per device
+role, connectors per link, device properties embedded as Visio shape data.
+Include a structural validator (unzip the .vsdx, check XML parts) and pytest
+coverage. This is the first and only place Python is used in the repo.
 
 ## Notes / decisions made without asking (boring-option calls)
 
-- TS project references + `composite: true` on `packages/schema`, with root
-  scripts (`build`/`test`/`typecheck`) always running `build` first — needed
-  because `design-engine` imports `DeviceRole`/`LinkKind` types from
-  `@netdesign/schema` across the package boundary. Standard pnpm+TS
-  monorepo pattern; `dist/` and `*.tsbuildinfo` are gitignored.
-- Vitest for tests (fast, native TS, zero-config per package).
-- IP allocation is a single shared `SubnetAllocator` instance walked in a
-  fixed category order (mgmt, loopback, P2P, VLAN) rather than pre-reserving
-  separate blocks per category — simpler, still deterministic, and in
-  practice produces contiguous-ish ranges per category for free since
-  nothing else has claimed that address space yet. Revisit only if a real
-  scenario needs guaranteed contiguous blocks for a specific category.
+- `designParamsSchema` lives in `packages/schema`, not `packages/
+  llm-extraction` or `packages/design-engine` — it's the contract between
+  those two modules, and `packages/schema` is already "the contract between
+  ALL modules" per CLAUDE.md. Avoids a circular dependency (llm-extraction →
+  design-engine → schema is fine; schema never depends back on either).
+- Anthropic tool input_schema needed a `Tool[]` cast in `client.ts` — the
+  SDK's `InputSchema` type wants a narrower literal shape than a plain
+  `Record<string, unknown>` JSON-schema-shaped object; the real work of
+  keeping that schema correct is delegated to `zod-to-json-schema` +
+  `designParamsSchema`, so the cast is just bridging two type
+  representations of the same validated-at-runtime object, not a
+  correctness risk.
+- `composeBranchOfficeDesign` does not yet populate per-device
+  `interfaces[]` (trunk/allowedVlans/per-interface IP) — out of scope for
+  this session (config-gen, which actually needs that detail, isn't built
+  yet). Flagged as a `meta.assumptions` entry in every composed design so
+  it's visible, not silently missing.
+- Router↔router peer links are intentionally not modeled even when
+  `router.count > 1` — HSRP peers over the shared VLAN segment, and the
+  Session-1 G1 ip-allocation fixture already established that shape; adding
+  a direct P2P peer link would be a design opinion beyond what either
+  golden scenario asked for.
+- No `apps/web` wiring yet — `generateBranchOfficeDesign()` is a complete,
+  tested library function; hooking it to a Next.js API route is Phase 1
+  (Sessions 5-6), not this session.
