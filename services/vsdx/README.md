@@ -73,32 +73,82 @@ concern, once export *quality* is being judged, not just export
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload   # serves on http://127.0.0.1:8000
-pytest                          # 32 tests: models, builder, validator, API
+pytest                          # 34 tests: models, builder, validator, API
 ```
 
 ## Known upstream issues worked around here
 
-- **Duplicate `<Override>`/`<Relationship>` entries broke draw.io import.**
-  `vsdx==0.6.1`'s `Connect.create()` bootstraps the connector master's
-  `[Content_Types].xml` `<Override>` and `visio/_rels/document.xml.rels`
-  `<Relationship>` entries by checking `os.path.exists(page.vis._masters_folder)`
-  — a real-filesystem check that's never actually true in this in-memory-zip
-  flow, so the bootstrap re-runs and re-appends on *every single* connector
-  instead of only the first. A design with 5 link connectors (G1) ended up
-  with 6 duplicate `<Override>` entries for the same `PartName` — invalid
-  per the OPC spec (ECMA-376 Part 2 §10.1.2.2.1: at most one `Override` per
-  part) — even though `vsdx`'s own parser round-trips it without complaint.
-  draw.io's importer does not tolerate this and fails with "Cannot read
-  properties of null (reading 'getElementsByTagName')" on open.
-  `_dedupe_opc_metadata()` in `vsdx_builder.py` collapses both files to one
-  entry per part/relationship as a post-save pass, and
-  `structural_validator.py`'s `_check_opc_metadata_integrity()` independently
-  flags any duplicates that creep back in — regression-tested in
-  `tests/test_structural_validator.py` (`test_g1_and_g4_outputs_have_no_duplicate_opc_metadata`
-  and friends). Confirmed fixed by re-exporting G1 and checking
-  `[Content_Types].xml`/`document.xml.rels` by hand.
+`vsdx`'s own (lenient) parser round-trips its own output fine, but draw.io's
+importer does not — it failed on the very first real-world test with
+"Cannot read properties of null (reading 'getElementsByTagName')" on open.
+Two independent bugs in `vsdx==0.6.1` caused it; both are fixed as a
+post-save pass in `_repackage()` (`vsdx_builder.py`) and independently
+regression-checked in `structural_validator.py`.
+
+- **Auto-generated `ns0:` namespace prefixes broke every tag/attribute match
+  draw.io's importer does.** This was the one that actually mattered — the
+  duplicate-metadata fix below shipped first and was *not* sufficient on its
+  own; the founder retried the export in draw.io and hit the identical
+  error, which is what led to finding this one. `vsdx` never calls
+  `ET.register_namespace()`, so Python's `xml.etree.ElementTree` falls back
+  to auto-generated prefixes (`ns0`, `ns1`, ...) for every part it
+  re-serializes: `<ns0:PageContents>` instead of the `<PageContents
+  xmlns="...">` real Visio produces. `vsdx`'s own parser resolves elements
+  by namespace-qualified `{uri}localname`, so it doesn't notice or care.
+  draw.io's importer (traced from
+  `github.com/jgraph/drawio/src/main/webapp/js/diagramly/vsdx/importer.js`,
+  since this couldn't be reproduced locally — see below) matches tags and
+  attributes as **bare string literals** instead: `child.tagName ===
+  "PageContents"`, `relsDoc.getElementsByTagName("Relationship")`,
+  `rel.getAttribute("r:id")`. Every one of those silently returns
+  null/empty against a prefixed tag, and something downstream calls
+  `.getElementsByTagName` on that null — hence the exact error reported.
+  The fix isn't a single upfront `ET.register_namespace("", uri)` call:
+  that's a *global* slot (keyed by URI, but only one URI can hold the
+  empty-string prefix at a time — each call evicts whichever namespace
+  held it before), and `vsdx.save_vsdx()` serializes multiple
+  differently-namespaced parts (Visio content, OPC relationships,
+  content-types) within one call. `_repackage()` instead walks every
+  `.xml`/`.rels` part in the *saved* zip and re-registers the *correct*
+  namespace as default immediately before re-serializing *that specific
+  part*, so each part gets its own namespace back as the unprefixed
+  default — matching what real Visio produces. Regression-tested by
+  `structural_validator.py`'s `_check_no_generated_namespace_prefixes()` on
+  every namespace-sensitive part (everything under `visio/`,
+  `[Content_Types].xml`, all `.rels` files) and
+  `tests/test_structural_validator.py::test_g1_and_g4_outputs_have_no_generated_namespace_prefixes`.
+- **Duplicate `<Override>`/`<Relationship>` entries.** `Connect.create()`
+  bootstraps the connector master's `[Content_Types].xml` `<Override>` and
+  `visio/_rels/document.xml.rels` `<Relationship>` entries by checking
+  `os.path.exists(page.vis._masters_folder)` — a real-filesystem check
+  that's never actually true in this in-memory-zip flow, so the bootstrap
+  re-runs and re-appends on *every single* connector instead of only the
+  first. A design with 5 link connectors (G1) ended up with 6 duplicate
+  `<Override>` entries for the same `PartName` — invalid per the OPC spec
+  (ECMA-376 Part 2 §10.1.2.2.1: at most one `Override` per part). This
+  alone doesn't explain the draw.io failure (see above — the namespace
+  issue does), but it's real and independently worth fixing.
+  `_repackage()` collapses both files to one entry per part/relationship,
+  and `structural_validator.py`'s `_check_opc_metadata_integrity()`
+  independently flags any duplicates that creep back in.
 - `Connect.create()` also builds `BegTrigger`/`EndTrigger` glue formulas with
   a string `.replace()` that drops a `.` (producing `Sheet1!` instead of
   `Sheet.1!`). `_fix_connector_trigger_formulas()` corrects this after every
   connector is created — the `<Connect>` elements vsdx itself round-trips on
   aren't affected, but a real Visio's live re-glue tracking likely is.
+
+### How this was actually debugged
+
+This session's network policy blocks `app.diagrams.net`, so a live
+browser-driven repro wasn't possible. Root-caused instead by fetching
+draw.io's real (non-minified-away) importer source directly from GitHub
+(`jgraph/drawio`, `dev` branch) and grepping every `getElementsByTagName`
+call site to find which one could plausibly receive `null` given this
+file's exact structure — landing on `mxVsdxPage.prototype.resolveRel`,
+which looks for a child literally named `PageContents` by bare
+`tagName` comparison. Confirmed by diffing which of our own output files
+were namespace-prefixed (the ones `vsdx` re-serializes: `document.xml`,
+`page1.xml`, `pages.xml`, `pages.xml.rels`) versus which weren't (the ones
+copied byte-for-byte from the original `media.vsdx`: `masters.xml`,
+`windows.xml`) — a clean, checkable signal that this was specifically a
+*re-serialization* artifact, not something inherent to the file format.

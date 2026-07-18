@@ -37,6 +37,7 @@ from app.models import Design, Device, Link
 
 NS = vsdx.namespace  # '{http://schemas.microsoft.com/office/visio/2012/main}'
 NS_URI = NS[1:-1]
+RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "blank.vsdx"
 
@@ -95,49 +96,67 @@ def build_vsdx_bytes(design: Design) -> bytes:
 
             vis.save_vsdx(str(output_path))
 
-        return _dedupe_opc_metadata(output_path.read_bytes())
+        return _repackage(output_path.read_bytes())
 
 
-CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
-RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+def _repackage(data: bytes) -> bytes:
+    """Post-save pass over every XML/rels part in the saved zip, working around two vsdx 0.6.1
+    issues neither of which vsdx's own (lenient) parser notices, but which broke draw.io's
+    stricter importer with "Cannot read properties of null (reading 'getElementsByTagName')":
 
+    1. Duplicate <Override>/<Relationship> entries. Connect.create() re-runs its "bootstrap the
+       connector master" branch on *every* call instead of only the first (its guard checks a
+       real filesystem path that's never populated in this in-memory-zip flow), appending
+       another [Content_Types].xml <Override> and document.xml.rels <Relationship> for the same
+       masters files each time — invalid per the OPC spec (ECMA-376 Part 2 §10.1.2.2.1: at most
+       one Override per part).
+    2. Auto-generated "ns0:" namespace prefixes. vsdx never calls ET.register_namespace(), so
+       every part it re-serializes gets a prefix (<ns0:PageContents> instead of
+       <PageContents xmlns="...">). draw.io's importer matches tag/attribute names as bare
+       string literals (`child.tagName === "PageContents"`, `getElementsByTagName("Relationship")`),
+       which silently fail against a prefixed name.
 
-def _dedupe_opc_metadata(data: bytes) -> bytes:
-    """Works around a vsdx 0.6.1 bug: Connect.create() re-runs its "bootstrap the connector
-    master" branch on *every* call instead of only the first, because its guard
-    (`os.path.exists(page.vis._masters_folder)`) checks a real filesystem path that's never
-    actually populated in this in-memory-zip flow. Each call appends another
-    <Override>/<Relationship> for the same masters files without checking whether one already
-    exists — for a design with N link connectors, that's N (or N+1) duplicate entries.
-
-    Duplicate <Override PartName="..."> entries in [Content_Types].xml are invalid per the OPC
-    spec (ECMA-376 Part 2 §10.1.2.2.1: at most one Override per part), and this is what tripped
-    up draw.io's importer ("Cannot read properties of null (reading 'getElementsByTagName')")
-    even though vsdx's own (more lenient) parser round-trips it fine. Collapse both files to one
-    entry per part/relationship, keeping the first occurrence, as a post-save pass — simpler and
-    more robust than trying to patch vsdx's internal bootstrap logic.
+    Fixing #2 can't be done with one upfront `ET.register_namespace("", uri)` call: it's a single
+    *global* slot, and vsdx serializes multiple differently-namespaced parts (Visio content,
+    OPC relationships) within one save_vsdx() call, so each part needs the registry pointed at
+    *its own* namespace right before *that part's* serialization — hence a part-by-part pass
+    here rather than a one-time setting. See services/vsdx/README.md for the full writeup.
     """
     src = zipfile.ZipFile(io.BytesIO(data))
-    fixed_content_types = _dedupe_by_attr(
-        src.read("[Content_Types].xml"), CONTENT_TYPES_NS, "Override", "PartName",
-    )
-    fixed_document_rels = _dedupe_relationships(src.read("visio/_rels/document.xml.rels"))
 
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
         for item in src.infolist():
-            if item.filename == "[Content_Types].xml":
-                dst.writestr(item, fixed_content_types)
-            elif item.filename == "visio/_rels/document.xml.rels":
-                dst.writestr(item, fixed_document_rels)
-            else:
-                dst.writestr(item, src.read(item.filename))
+            content = src.read(item.filename)
+            if item.filename.endswith(".xml") or item.filename.endswith(".rels"):
+                content = _normalize_xml_part(item.filename, content)
+            dst.writestr(item, content)
     return out.getvalue()
 
 
-def _dedupe_by_attr(xml_bytes: bytes, ns_uri: str, tag: str, key_attr: str) -> bytes:
-    ET.register_namespace("", ns_uri)
+def _normalize_xml_part(filename: str, xml_bytes: bytes) -> bytes:
     root = ET.fromstring(xml_bytes)
+
+    ns_uri = _namespace_of(root.tag)
+    if ns_uri is not None:
+        ET.register_namespace("", ns_uri)
+
+    if filename == "[Content_Types].xml":
+        _dedupe_by_attr(root, "Override", "PartName")
+    elif filename.endswith(".rels"):
+        _dedupe_relationships(root)
+
+    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+
+def _namespace_of(tag: str) -> str | None:
+    if tag.startswith("{"):
+        return tag[1:].split("}", 1)[0]
+    return None
+
+
+def _dedupe_by_attr(root: ET.Element, tag: str, key_attr: str) -> None:
+    ns_uri = _namespace_of(root.tag)
     seen: set[str] = set()
     for el in list(root.findall(f"{{{ns_uri}}}{tag}")):
         key = el.attrib.get(key_attr, "")
@@ -145,12 +164,9 @@ def _dedupe_by_attr(xml_bytes: bytes, ns_uri: str, tag: str, key_attr: str) -> b
             root.remove(el)
         else:
             seen.add(key)
-    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
 
 
-def _dedupe_relationships(xml_bytes: bytes) -> bytes:
-    ET.register_namespace("", RELATIONSHIPS_NS)
-    root = ET.fromstring(xml_bytes)
+def _dedupe_relationships(root: ET.Element) -> None:
     seen: set[tuple[str, str]] = set()
     for rel in list(root.findall(f"{{{RELATIONSHIPS_NS}}}Relationship")):
         key = (rel.attrib.get("Type", ""), rel.attrib.get("Target", ""))
@@ -158,7 +174,6 @@ def _dedupe_relationships(xml_bytes: bytes) -> bytes:
             root.remove(rel)
         else:
             seen.add(key)
-    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
 
 
 def _size_page_for_device_count(page: "vsdx.Page", device_count: int) -> None:

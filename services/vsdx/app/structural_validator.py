@@ -13,6 +13,7 @@ that.
 from __future__ import annotations
 
 import io
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
@@ -87,15 +88,44 @@ def validate_vsdx_structure(data: bytes, design: Design) -> StructuralValidation
 
     errors.extend(_check_device_shape_data(shape_elements, design))
     errors.extend(_check_opc_metadata_integrity(zf, names))
+    errors.extend(_check_no_generated_namespace_prefixes(zf, names))
 
     return StructuralValidationResult(ok=len(errors) == 0, errors=errors)
+
+
+GENERATED_PREFIX_PATTERN = re.compile(r"\bns\d+:")
+
+
+def _check_no_generated_namespace_prefixes(zf: zipfile.ZipFile, names: set[str]) -> list[str]:
+    """draw.io's importer matches tags/attributes as bare string literals (e.g.
+    `child.tagName === "PageContents"`, `getElementsByTagName("Relationship")`). vsdx never
+    calls ET.register_namespace(), so any part it re-serializes gets Python's auto-generated
+    "ns0:"-style prefix instead of the default (unprefixed) namespace real Visio uses —
+    which silently breaks every one of those comparisons even though vsdx's own parser
+    doesn't care. See vsdx_builder._repackage / services/vsdx/README.md. Python reserves the
+    `ns\\d+` prefix pattern exclusively for this auto-generation (register_namespace() itself
+    rejects it), so a match here is unambiguous — not a false positive on legitimate content.
+    """
+    relevant = {
+        name
+        for name in names
+        if name == "[Content_Types].xml"
+        or name.endswith(".rels")
+        or (name.startswith("visio/") and name.endswith(".xml") and "docProps" not in name)
+    }
+    errors: list[str] = []
+    for name in sorted(relevant):
+        text = zf.read(name).decode("utf-8", errors="replace")
+        if GENERATED_PREFIX_PATTERN.search(text):
+            errors.append(f'{name} has an auto-generated "nsN:" namespace prefix — draw.io\'s importer will not recognize its tags.')
+    return errors
 
 
 def _check_opc_metadata_integrity(zf: zipfile.ZipFile, names: set[str]) -> list[str]:
     """Duplicate <Override>/<Relationship> entries are invalid per the OPC spec (ECMA-376
     Part 2 §10.1.2.2.1) even though vsdx's own parser tolerates them — this is exactly the
     class of bug that broke draw.io's importer with "Cannot read properties of null" on a
-    file vsdx itself round-tripped without complaint. See vsdx_builder._dedupe_opc_metadata."""
+    file vsdx itself round-tripped without complaint. See vsdx_builder._repackage."""
     errors: list[str] = []
 
     if "[Content_Types].xml" in names:

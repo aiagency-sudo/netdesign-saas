@@ -1,4 +1,5 @@
 import io
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -111,6 +112,39 @@ def test_g1_and_g4_outputs_have_no_duplicate_opc_metadata(g1_design, g4_design):
     """The actual bug report: G1 has 5 link connectors, which used to be enough to produce 6
     duplicate <Override>/<Relationship> entries for the same masters files. Confirm the real
     (non-tampered) builder output is clean for both golden scenarios."""
+    for design in (g1_design, g4_design):
+        result = validate_vsdx_structure(build_vsdx_bytes(design), design)
+        assert result.ok, result.errors
+
+
+def test_catches_a_generated_namespace_prefix(g1_design):
+    """Regression test for the second real bug that broke draw.io's importer: vsdx never
+    registers a default namespace, so any part it re-serializes gets Python's auto "ns0:"
+    prefix (<ns0:PageContents> instead of <PageContents xmlns="...">), which silently breaks
+    every one of draw.io's bare-string tag/attribute comparisons. build_vsdx_bytes() now
+    normalizes this, but the validator should independently catch it if it ever creeps back.
+
+    Simulates the bug by uniformly re-prefixing every tag in an otherwise-valid page1.xml —
+    every element there shares the one Visio namespace, so this stays well-formed (unlike a
+    partial find/replace, which would leave mismatched open/close tags)."""
+    data = build_vsdx_bytes(g1_design)
+    zf = zipfile.ZipFile(io.BytesIO(data))
+    page_xml = zf.read("visio/pages/page1.xml").decode("utf-8")
+
+    tampered_xml = page_xml.replace(
+        'xmlns="http://schemas.microsoft.com/office/visio/2012/main"',
+        'xmlns:ns0="http://schemas.microsoft.com/office/visio/2012/main"',
+    )
+    tampered_xml = re.sub(r"<(/?)([A-Za-z])", r"<\1ns0:\2", tampered_xml)
+
+    tampered = _rewrite_zip_entry(data, "visio/pages/page1.xml", tampered_xml.encode("utf-8"))
+    result = validate_vsdx_structure(tampered, g1_design)
+
+    assert not result.ok
+    assert any("nsN" in e and "page1.xml" in e for e in result.errors)
+
+
+def test_g1_and_g4_outputs_have_no_generated_namespace_prefixes(g1_design, g4_design):
     for design in (g1_design, g4_design):
         result = validate_vsdx_structure(build_vsdx_bytes(design), design)
         assert result.ok, result.errors
