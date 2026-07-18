@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 import vsdx
 
-from app.models import Design
-from app.vsdx_builder import renderable_links
+from app.models import Design, Link
+from app.vsdx_builder import link_interface_names, renderable_links
 
 NS = vsdx.namespace
 CONTENT_TYPES_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
@@ -68,7 +68,8 @@ def validate_vsdx_structure(data: bytes, design: Design) -> StructuralValidation
         return StructuralValidationResult(ok=False, errors=errors)
 
     links = renderable_links(design)
-    expected_shape_count = len(design.devices) + len(links)
+    port_label_count = sum(1 for link in links for interface in link_interface_names(link) if interface)
+    expected_shape_count = len(design.devices) + len(links) + port_label_count
     expected_connect_count = 2 * len(links)
 
     shapes_el = root.find(f"{NS}Shapes")
@@ -76,7 +77,8 @@ def validate_vsdx_structure(data: bytes, design: Design) -> StructuralValidation
     if len(shape_elements) != expected_shape_count:
         errors.append(
             f"Expected {expected_shape_count} top-level shapes "
-            f"({len(design.devices)} devices + {len(links)} connectors), found {len(shape_elements)}.",
+            f"({len(design.devices)} devices + {len(links)} connectors + {port_label_count} port labels), "
+            f"found {len(shape_elements)}.",
         )
 
     connects_el = root.find(f"{NS}Connects")
@@ -87,6 +89,7 @@ def validate_vsdx_structure(data: bytes, design: Design) -> StructuralValidation
         )
 
     errors.extend(_check_device_shape_data(shape_elements, design))
+    errors.extend(_check_port_labels_present(shape_elements, links))
     errors.extend(_check_opc_metadata_integrity(zf, names))
     errors.extend(_check_no_generated_namespace_prefixes(zf, names))
 
@@ -147,6 +150,30 @@ def _check_opc_metadata_integrity(zf: zipfile.ZipFile, names: set[str]) -> list[
             if count > 1:
                 errors.append(f'{name} has {count} <Relationship> entries for Type/Target={key} (should be deduplicated).')
 
+    return errors
+
+
+def _check_port_labels_present(shape_elements: list[ET.Element], links: list[Link]) -> list[str]:
+    """Every interface name a link carries (e.g. "eth0/1") should appear as some shape's
+    text on the page — this is the actual feature the founder asked for after a first-draft
+    diagram shipped with unlabeled links, so it gets its own explicit check rather than
+    just being implied by the shape count matching.
+
+    Interface names restart per device (every device's first link gets "eth0/0"), so the
+    same text is expected to appear many times across a real design — comparing Counters
+    (expected occurrences <= actual occurrences, per text) rather than mere set membership
+    is what makes this catch one specific missing label instead of only noticing when the
+    *last* shape with a given text disappears.
+    """
+    expected = Counter(interface for link in links for interface in link_interface_names(link) if interface)
+    actual = Counter((el.find(f"{NS}Text").text or "").strip() for el in shape_elements if el.find(f"{NS}Text") is not None)
+
+    errors: list[str] = []
+    for text, expected_count in expected.items():
+        if actual[text] < expected_count:
+            errors.append(
+                f'Expected {expected_count} shape(s) with port-label text "{text}", found {actual[text]}.',
+            )
     return errors
 
 

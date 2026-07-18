@@ -68,6 +68,30 @@ def test_catches_wrong_shape_data_on_a_device(g1_design):
     assert any("Role" in e for e in result.errors)
 
 
+def test_catches_a_missing_port_label(g1_design):
+    """Simulates a builder regression where a port-label shape silently fails to render:
+    delete one (leaving its connector and every other shape untouched) and confirm the
+    dedicated port-label check flags it — this is the actual feature the founder asked
+    for, so it gets its own regression test rather than relying on the shape-count check
+    alone (which would also catch it, but with a less specific error message)."""
+    data = build_vsdx_bytes(g1_design)
+    zf = zipfile.ZipFile(io.BytesIO(data))
+    page_xml = zf.read("visio/pages/page1.xml")
+
+    root = ET.fromstring(page_xml)
+    shapes_el = root.find(f"{NS}Shapes")
+    port_label_shape = next(
+        s for s in shapes_el.findall(f"{NS}Shape") if (s.find(f"{NS}Text").text or "").strip() == "eth0/0"
+    )
+    shapes_el.remove(port_label_shape)
+
+    tampered = _rewrite_zip_entry(data, "visio/pages/page1.xml", ET.tostring(root))
+    result = validate_vsdx_structure(tampered, g1_design)
+
+    assert not result.ok
+    assert any("port-label text" in e and 'eth0/0"' in e for e in result.errors)
+
+
 def test_catches_a_duplicate_content_types_override(g1_design):
     """Regression test for the real bug that broke draw.io's importer: vsdx.Connect.create()
     used to append a fresh <Override> for the masters files on every call instead of once,

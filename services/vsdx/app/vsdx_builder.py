@@ -93,6 +93,7 @@ def build_vsdx_bytes(design: Design) -> bytes:
 
             for link in renderable_links(design):
                 _add_link_connector(page, link, shape_by_device_id)
+                _add_port_labels(page, link, shape_by_device_id)
 
             vis.save_vsdx(str(output_path))
 
@@ -224,6 +225,16 @@ def link_device_ids(link: Link) -> tuple[str, str]:
     return link.a.split(":", 1)[0], link.b.split(":", 1)[0]
 
 
+def link_interface_names(link: Link) -> tuple[str | None, str | None]:
+    """The optional ":interface" suffix on a link's a/b (e.g. "rtr-01:eth0/1" -> "eth0/1"), if present."""
+
+    def interface_of(endpoint: str) -> str | None:
+        parts = endpoint.split(":", 1)
+        return parts[1] if len(parts) == 2 else None
+
+    return interface_of(link.a), interface_of(link.b)
+
+
 def renderable_links(design: Design) -> list[Link]:
     """Links where both ends are devices in this design — an end pointing outside the device
     list (e.g. an external ISP hop) has no shape to connect, so it's not ours to draw."""
@@ -258,6 +269,74 @@ def _fix_connector_trigger_formulas(connector: "vsdx.Shape") -> None:
         cell = connector.cells.get(cell_name)
         if cell is not None and cell.formula:
             cell.formula = re.sub(r"Sheet(\d+)!", r"Sheet.\1!", cell.formula)
+
+
+PORT_LABEL_WIDTH_IN = 0.7
+PORT_LABEL_HEIGHT_IN = 0.2
+PORT_LABEL_OFFSET_IN = 0.9  # distance from a device's center, along the line to its link partner
+
+
+def _add_port_labels(page: "vsdx.Page", link: Link, shape_by_device_id: dict[str, "vsdx.Shape"]) -> None:
+    """Small borderless text shapes near each end of a connector showing that side's
+    interface name (g1/1, eth0/1, ...) — what the founder specifically asked for after
+    seeing a first-draft diagram with unlabeled links."""
+    interface_a, interface_b = link_interface_names(link)
+    if not interface_a and not interface_b:
+        return
+
+    from_id, to_id = link_device_ids(link)
+    from_shape = shape_by_device_id[from_id]
+    to_shape = shape_by_device_id[to_id]
+
+    if interface_a:
+        x, y = _port_label_position(from_shape.center_x_y, to_shape.center_x_y)
+        _add_port_label(page, x, y, interface_a)
+    if interface_b:
+        x, y = _port_label_position(to_shape.center_x_y, from_shape.center_x_y)
+        _add_port_label(page, x, y, interface_b)
+
+
+def _port_label_position(near_xy: tuple[float, float], far_xy: tuple[float, float]) -> tuple[float, float]:
+    """A point PORT_LABEL_OFFSET_IN from `near_xy`, along the line toward `far_xy` — just
+    outside the near shape's edge — but never more than halfway there, so labels on very
+    short links (e.g. two adjacent grid cells) don't overshoot past the midpoint."""
+    nx, ny = near_xy
+    fx, fy = far_xy
+    dx, dy = fx - nx, fy - ny
+    distance = math.hypot(dx, dy)
+    if distance < 1e-6:
+        return nx, ny
+    t = min(PORT_LABEL_OFFSET_IN / distance, 0.45)
+    return nx + dx * t, ny + dy * t
+
+
+def _add_port_label(page: "vsdx.Page", pin_x: float, pin_y: float, text: str) -> None:
+    shapes_el = page.xml.getroot().find(f"{NS}Shapes")
+    if shapes_el is None:
+        shapes_el = ET.SubElement(page.xml.getroot(), f"{NS}Shapes")
+
+    shape_id = page.set_max_ids() + 1  # re-scans the page each time, so this is always collision-free
+    shape_xml = _port_label_shape_xml(shape_id, pin_x, pin_y, text)
+    shapes_el.append(shape_xml)
+
+
+def _port_label_shape_xml(shape_id: int, pin_x: float, pin_y: float, text: str) -> ET.Element:
+    xml_str = f"""<Shape xmlns="{NS_URI}" ID="{shape_id}" Type="Shape" LineStyle="0" FillStyle="0" TextStyle="0">
+        <Cell N="PinX" V="{pin_x}"/><Cell N="PinY" V="{pin_y}"/>
+        <Cell N="Width" V="{PORT_LABEL_WIDTH_IN}"/><Cell N="Height" V="{PORT_LABEL_HEIGHT_IN}"/>
+        <Cell N="LocPinX" V="{PORT_LABEL_WIDTH_IN / 2}" F="Width*0.5"/><Cell N="LocPinY" V="{PORT_LABEL_HEIGHT_IN / 2}" F="Height*0.5"/>
+        <Cell N="Angle" V="0"/><Cell N="FlipX" V="0"/><Cell N="FlipY" V="0"/><Cell N="ResizeMode" V="0"/>
+        <Cell N="FillPattern" V="0"/><Cell N="LinePattern" V="0"/>
+        <Section N="Geometry" IX="0">
+            <Row T="RelMoveTo" IX="1"><Cell N="X" V="0"/><Cell N="Y" V="0"/></Row>
+            <Row T="RelLineTo" IX="2"><Cell N="X" V="1"/><Cell N="Y" V="0"/></Row>
+            <Row T="RelLineTo" IX="3"><Cell N="X" V="1"/><Cell N="Y" V="1"/></Row>
+            <Row T="RelLineTo" IX="4"><Cell N="X" V="0"/><Cell N="Y" V="1"/></Row>
+            <Row T="RelLineTo" IX="5"><Cell N="X" V="0"/><Cell N="Y" V="0"/></Row>
+        </Section>
+        <Text>{_xml_escape(text)}</Text>
+    </Shape>"""
+    return ET.fromstring(xml_str)
 
 
 def _rect_shape_xml(

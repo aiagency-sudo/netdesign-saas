@@ -30,6 +30,20 @@ describe("golden G4 smb-simple — full design composition", () => {
     expect(findOverlappingSubnetsInDesign(design)).toEqual([]);
   });
 
+  it("embeds a port name on every link endpoint and a matching interfaces[] entry on every device", () => {
+    for (const link of design.links) {
+      expect(link.a).toMatch(/^[a-z0-9-]+:eth0\/\d+$/);
+      expect(link.b).toMatch(/^[a-z0-9-]+:eth0\/\d+$/);
+    }
+    for (const device of design.devices) {
+      expect(device.interfaces?.length).toBeGreaterThan(0);
+    }
+    const sw = design.devices.find((d) => d.id === "sw-01")!;
+    expect(sw.interfaces).toHaveLength(1);
+    expect(sw.interfaces![0]!.trunk).toBe(true);
+    expect(sw.interfaces![0]!.allowedVlans).toEqual([10, 20]);
+  });
+
   it("is deterministic across repeated composition", () => {
     expect(composeBranchOfficeDesign(g4SmbSimpleParams)).toEqual(design);
   });

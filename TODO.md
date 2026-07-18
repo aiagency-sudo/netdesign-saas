@@ -5,7 +5,7 @@ Read this first each session. Repo is green: `pnpm test` / `pnpm test:golden`
 `services/vsdx`'s `pytest` (Python, separate venv) both pass as of the
 state below.
 
-## Where things stand (after Session 4 — Phase 0 complete)
+## Where things stand (after Session 5 — Phase 0 + port-name labels)
 
 - TS workspace unchanged in shape from Session 2: `packages/schema`,
   `packages/design-engine`, `packages/llm-extraction`. 79 tests, all green.
@@ -13,7 +13,7 @@ state below.
   CLAUDE.md): a FastAPI service, `POST /export` (design JSON in, `.vsdx`
   bytes out, `Content-Type: application/vnd.ms-visio.drawing`) and
   `GET /healthz`. Own venv at `services/vsdx/.venv`; `pip install -e ".[dev]"`
-  then `pytest` (34 tests). Not wired into the pnpm workspace — it's a
+  then `pytest` (40 tests). Not wired into the pnpm workspace — it's a
   separately-deployed Python service, so it stays outside `pnpm-workspace.yaml`.
   - `app/models.py`: pydantic mirror of `design-schema.json` (Python's
     counterpart to `packages/schema`'s zod validators). Strictly typed for
@@ -104,21 +104,62 @@ state below.
   `validate_vsdx_structure()`. `--prose` wasn't live-tested (no API key in
   this environment) but its error-guard path (missing key, `--prose` +
   `--fixture` both given) was.
+- **Port names on the diagram** (founder feedback after reviewing the
+  weekend-gate exports: "the drawing doesn't display port names — g1/1,
+  eth1/1, etc"):
+  - `packages/design-engine/src/compose/branch-office.ts`'s new
+    `assignInterfaces()` assigns a vendor-neutral `eth0/N` per device per
+    link (sequential in link order — a device's Nth link gets `eth0/N-1`),
+    embeds it in `link.a`/`link.b` as `deviceId:interface` (the format
+    design-schema.json already documented but nothing produced yet), and
+    populates that device's `interfaces[]` with `ip` (P2P links, from
+    `planIpAllocation`'s `p2pLinks`) or `trunk`+`allowedVlans` (everything
+    else — every VLAN in the design, since there's no per-switch VLAN
+    membership model). This also let the stale "interface trunk assignment
+    not yet populated" `meta.assumptions` entry get removed — it's populated
+    now. Full writeup in `packages/design-engine/README.md`.
+  - `services/vsdx/app/vsdx_builder.py`: `_add_port_labels()` adds a small
+    borderless text shape near each connector endpoint that has an interface
+    name, positioned via `_port_label_position()` (offset from the near
+    device toward the far one, clamped to the midpoint on short links —
+    pure function, unit-tested directly). Shape IDs use
+    `page.set_max_ids() + 1` right before each add, so they can never
+    collide with device/connector shapes regardless of what vsdx's own ID
+    assignment picked.
+  - `structural_validator.py` grew a shape-count adjustment
+    (`+ port_label_count`) and a new `_check_port_labels_present()` —
+    `Counter`-based (expected occurrences ≤ actual occurrences per text),
+    not set membership, because interface names restart per device
+    (`eth0/0` legitimately appears once per device across a real design), so
+    a naive "does this text exist anywhere on the page" check can't tell a
+    genuinely missing label from one of its many same-text siblings.
+  - `tests/fixtures/g{1,4}_*.json` (Python) updated to match the new TS
+    snapshot output exactly (interface-suffixed links + `interfaces[]`).
+  - Verified end-to-end via `pnpm generate -- --fixture g1|g4` against a
+    locally running vsdx service; sent both exports to the founder for
+    visual confirmation — **response pending as of this note.**
 
-## Next step (Session 5, per BUILD_PLAN.md)
+## Next step (Session 6, per BUILD_PLAN.md)
 
-**Phase 0 is done.** The CLI wiring (`scripts/generate-design.ts`) works
-end-to-end, and the WEEKEND GATE passed clean on all 3 targets (draw.io,
-LibreOffice Draw, Visio via OneDrive). The remaining judgment call from
-BUILD_PLAN's gate — "would you hand this to a client after ≤15 min of
-cleanup?" — is the founder's, not something to self-certify here; note the
-answer in this file next session if it hasn't been settled explicitly.
-Assuming yes: Phase 1 starts, BUILD_PLAN Sessions 5-6 — "Build the Next.js
-app: Supabase auth (email magic link), projects table, a prompt page that
-calls the pipeline, and a React Flow canvas rendering the design JSON with
-role-based node icons and zone grouping. Deploy to Vercel; deploy
-services/vsdx to Railway." This is the first session that touches
-`apps/web` — nothing there yet.
+**Phase 0 is done** (weekend gate passed all 3 targets — see Session 4
+notes above) **and port names are shipped.** Founder raised a second,
+explicitly deferred concern: integrating real stencils for
+routers/switches/firewalls instead of generic colored rectangles — decided
+against pulling proprietary Microsoft/Cisco stencils (licensing + fragility,
+see the Connect.create() master-copying saga above), leaning toward
+hand-built vendor-neutral vector icon shapes over embedded raster/SVG
+images, but this needs the founder's actual decision before building
+anything — see the two options laid out in conversation, not yet written
+down here as a firm plan.
+
+Otherwise: the remaining judgment call from BUILD_PLAN's weekend gate —
+"would you hand this to a client after ≤15 min of cleanup?" — is the
+founder's; note the answer here once settled. Assuming yes: Phase 1 starts,
+BUILD_PLAN Sessions 5-6 — "Build the Next.js app: Supabase auth (email
+magic link), projects table, a prompt page that calls the pipeline, and a
+React Flow canvas rendering the design JSON with role-based node icons and
+zone grouping. Deploy to Vercel; deploy services/vsdx to Railway." This is
+the first session that touches `apps/web` — nothing there yet.
 
 ## Notes / decisions made without asking (boring-option calls)
 
@@ -151,3 +192,18 @@ services/vsdx to Railway." This is the first session that touches
   comes in transitively via `@anthropic-ai/sdk`'s own dependency tree,
   which isn't visible from the root). Pinned to `^22` to match the Node
   version this environment and Node 22+ deploy targets actually run.
+- Interface names are `eth0/N`, uniform across every device role — not
+  `Gi0/N`/`port1`/etc. per vendor. design-schema.json's own field
+  description says exactly this ("Vendor-neutral: eth0/1 — templates map to
+  Gi0/1, port1, ethernet1/1 etc."); vendor-specific naming is config-gen's
+  job (not built yet), not the diagram's.
+- Every trunk link gets *every* VLAN in `allowedVlans` — there's no
+  per-switch VLAN membership model in this composer, so "all VLANs on every
+  trunk" is the only answer that doesn't require inventing a policy nobody
+  asked for. Revisit if/when per-switch VLAN scoping becomes a real
+  requirement.
+- Port labels are a fixed-size borderless text shape, not a Visio "Callout"
+  or connector-endpoint-native label feature — kept it a plain Shape (same
+  primitive already used for devices) rather than researching a more
+  Visio-idiomatic mechanism, since the plain-shape approach is understood
+  and already proven reliable for this codebase's XML-construction pattern.

@@ -29,6 +29,14 @@ link end pointing outside the device list (e.g. an external ISP hop) has no
 shape to connect to and is silently skipped (see `renderable_links()` in
 `app/vsdx_builder.py`).
 
+Each link endpoint that carries an interface name (design-schema.json's
+`deviceId:interface` link format, e.g. `"rtr-01:eth0/1"`) gets a small
+borderless port-label shape near that end of the connector — a founder
+request after a first-draft diagram shipped with unlabeled links. Position
+is computed from the two device shapes' own coordinates (`_port_label_position()`
+in `vsdx_builder.py`), offset toward the link partner and clamped to never
+overshoot the midpoint on short links (e.g. adjacent grid cells).
+
 VLAN/segment data is accepted (and validated) but not yet drawn onto the
 diagram — out of scope for this session; see TODO.md.
 
@@ -56,10 +64,17 @@ python -m app.templates.generate_blank_template
 `validate_vsdx_structure(vsdx_bytes, design)` unzips the output and checks:
 required OOXML parts are present (`[Content_Types].xml`,
 `visio/pages/page1.xml`, etc.); the page's top-level shape count equals
-`len(devices) + len(renderable_links)`; the `<Connects>` count equals
-`2 * len(renderable_links)` (each connector glues at both ends); and every
+`devices + renderable_links + port_labels` (port labels: one per link
+endpoint that carries an interface name); the `<Connects>` count equals
+`2 * len(renderable_links)` (each connector glues at both ends); every
 device has a shape whose Shape Data actually matches that device's id, role,
-and vendor — not just that *some* shape exists.
+and vendor — not just that *some* shape exists; and every expected
+port-label text appears on the page at least as many times as it should
+(`Counter`-based, not mere set membership — interface names restart per
+device, so "eth0/0" legitimately appears on every device's first link, and
+a naive "does this text exist anywhere" check can't tell a genuinely
+missing label from one of its many same-text siblings elsewhere on the
+page).
 
 This is not the same thing as the golden-file `.vsdx` comparison CLAUDE.md
 describes (`tests/golden/*.vsdx`, comparing against real exports once
@@ -73,7 +88,7 @@ concern, once export *quality* is being judged, not just export
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload   # serves on http://127.0.0.1:8000
-pytest                          # 34 tests: models, builder, validator, API
+pytest                          # 40 tests: models, builder, validator, API
 ```
 
 ## Known upstream issues worked around here

@@ -57,3 +57,22 @@ talking to each other or to the LLM.
 - `findOverlappingPairs()` (`src/ip-allocation/validate.ts`) is the generic
   overlap check; golden-scenario tests use it directly instead of
   hand-rolling range comparisons.
+
+## Interface naming (`src/compose/branch-office.ts`, `assignInterfaces()`)
+
+Every link endpoint gets a vendor-neutral interface name — `eth0/0`,
+`eth0/1`, ... — assigned per device, sequential in link order (a device's
+first link gets `eth0/0`, its second gets `eth0/1`, regardless of which
+other device is on the other end). Names are embedded directly in the
+design's `link.a`/`link.b` as `deviceId:interface` (design-schema.json's
+documented format) and mirrored into that device's `interfaces[]`, which
+also carries whichever of `ip` (P2P links, from `planIpAllocation`'s
+`p2pLinks`) or `trunk`/`allowedVlans` (everything else — router↔switch
+trunks, switch↔switch interlinks) applies. There's no per-switch VLAN
+membership model yet, so every trunk gets *every* VLAN in the design; that's
+the only consistent answer available today, not a considered policy choice.
+
+This is what lets `services/vsdx` label each end of a connector with its
+actual port name instead of drawing an unlabeled line — the diagram reads
+the interface name straight off `link.a`/`link.b`, it doesn't recompute
+anything.
