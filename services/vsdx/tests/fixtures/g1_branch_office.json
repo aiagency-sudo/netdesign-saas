@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "meta": {
+    "name": "G1 Branch Office",
+    "intentSummary": "Branch office with dual HSRP routers, two access switches, and an edge firewall serving three VLANs.",
+    "designPattern": "branch-office",
+    "assumptions": [
+      "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session."
+    ],
+    "warnings": []
+  },
+  "devices": [
+    { "id": "rtr-01", "hostname": "rtr-01", "role": "router", "vendorHint": "cisco-ios", "mgmtIp": "10.30.0.2", "loopback": "10.30.1.0/32", "redundancyGroup": "hsrp-1" },
+    { "id": "rtr-02", "hostname": "rtr-02", "role": "router", "vendorHint": "cisco-ios", "mgmtIp": "10.30.0.3", "loopback": "10.30.1.1/32", "redundancyGroup": "hsrp-1" },
+    { "id": "sw-01", "hostname": "sw-01", "role": "access-switch", "vendorHint": "cisco-ios", "mgmtIp": "10.30.0.4" },
+    { "id": "sw-02", "hostname": "sw-02", "role": "access-switch", "vendorHint": "cisco-ios", "mgmtIp": "10.30.0.5" },
+    { "id": "fw-01", "hostname": "fw-01", "role": "firewall", "vendorHint": "fortinet-fortigate", "mgmtIp": "10.30.0.6", "loopback": "10.30.1.2/32" }
+  ],
+  "links": [
+    { "a": "fw-01", "b": "rtr-01", "kind": "ethernet", "label": "Firewall uplink", "subnet": "10.30.1.4/31" },
+    { "a": "fw-01", "b": "rtr-02", "kind": "ethernet", "label": "Firewall uplink", "subnet": "10.30.1.6/31" },
+    { "a": "rtr-01", "b": "sw-01", "kind": "ethernet", "label": "Access trunk" },
+    { "a": "rtr-02", "b": "sw-02", "kind": "ethernet", "label": "Access trunk" },
+    { "a": "sw-01", "b": "sw-02", "kind": "port-channel", "label": "Switch interlink" }
+  ],
+  "segments": [
+    { "name": "corp-data", "vlanId": 10, "cidr": "10.30.2.0/24", "gateway": "10.30.2.1", "purpose": "user", "dhcp": true },
+    { "name": "voice", "vlanId": 20, "cidr": "10.30.3.0/24", "gateway": "10.30.3.1", "purpose": "voice", "dhcp": true },
+    { "name": "guest", "vlanId": 30, "cidr": "10.30.4.0/24", "gateway": "10.30.4.1", "purpose": "guest", "dhcp": true }
+  ],
+  "routing": {
+    "igp": "static",
+    "firstHopRedundancy": "hsrp",
+    "defaultRoute": "0.0.0.0/0"
+  }
+}

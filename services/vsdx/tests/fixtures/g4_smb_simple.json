@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "meta": {
+    "name": "G4 Small Office",
+    "intentSummary": "Single-router SMB design with one access switch and an edge firewall serving corp and guest VLANs.",
+    "designPattern": "smb-flat",
+    "assumptions": [
+      "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session."
+    ],
+    "warnings": []
+  },
+  "devices": [
+    { "id": "rtr-01", "hostname": "rtr-01", "role": "router", "vendorHint": "cisco-ios", "mgmtIp": "10.40.0.2", "loopback": "10.40.1.0/32" },
+    { "id": "sw-01", "hostname": "sw-01", "role": "access-switch", "vendorHint": "cisco-ios", "mgmtIp": "10.40.0.3" },
+    { "id": "fw-01", "hostname": "fw-01", "role": "firewall", "vendorHint": "fortinet-fortigate", "mgmtIp": "10.40.0.4", "loopback": "10.40.1.1/32" }
+  ],
+  "links": [
+    { "a": "fw-01", "b": "rtr-01", "kind": "ethernet", "label": "Firewall uplink", "subnet": "10.40.1.2/31" },
+    { "a": "rtr-01", "b": "sw-01", "kind": "ethernet", "label": "Access trunk" }
+  ],
+  "segments": [
+    { "name": "corp", "vlanId": 10, "cidr": "10.40.2.0/24", "gateway": "10.40.2.1", "purpose": "user", "dhcp": true },
+    { "name": "guest", "vlanId": 20, "cidr": "10.40.3.0/24", "gateway": "10.40.3.1", "purpose": "guest", "dhcp": true }
+  ],
+  "routing": {
+    "igp": "static",
+    "firstHopRedundancy": "none",
+    "defaultRoute": "0.0.0.0/0"
+  }
+}

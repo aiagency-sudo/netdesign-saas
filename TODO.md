@@ -1,103 +1,86 @@
 # TODO — NetDesign AI
 
-Read this first each session. Repo is green: `pnpm test` and `pnpm test:golden`
+Read this first each session. Repo is green: `pnpm test` / `pnpm test:golden`
+(TypeScript workspace) and `services/vsdx`'s `pytest` (Python, separate venv)
 both pass as of the state below.
 
-## Where things stand (after Session 2)
+## Where things stand (after Session 3)
 
-- pnpm workspace: `packages/schema`, `packages/design-engine`,
-  `packages/llm-extraction`. Root `build`/`test`/`test:golden`/`typecheck`
-  always build first (TS project references across the workspace).
-- `packages/schema`: `design-schema.json` + zod validators (`designSchema`,
-  `parseDesign()`/`safeParseDesign()`, `DesignValidationError`), plus a new
-  **`designParamsSchema`** (`src/zod/design-params.ts`) — the intermediate
-  contract between LLM extraction and the design-engine composer. It's
-  deliberately narrower than the final design schema and its
-  `designPattern` enum only allows `"branch-office"` / `"smb-flat"`, the two
-  patterns the composer can build today. `schema-drift-guard.test.ts` still
-  only guards `designSchema` against `design-schema.json`; `designParamsSchema`
-  has no external JSON-schema counterpart so it doesn't need one.
-- `packages/design-engine`:
-  - `ip-allocation/` unchanged from Session 1 (`SubnetAllocator`,
-    `planIpAllocation`), plus a new `findOverlappingSubnetsInDesign(design)`
-    in `validate.ts` — the same zero-overlap check as before, but over a
-    *composed* Design's mgmt IPs (treated as /32), loopbacks, link subnets,
-    and VLAN CIDRs, instead of a raw `IpAllocationPlan`.
-  - **`compose/branch-office.ts`** (new): `composeBranchOfficeDesign(params:
-    DesignParams): Design`. Builds routers/switches/an optional firewall,
-    wires firewall↔router and router↔switch (round-robin when counts don't
-    match) and switch↔switch interlink links, assigns VLAN ids sequentially,
-    calls `planIpAllocation`, merges addressing back into devices/links/
-    segments, and **always returns `parseDesign()`'s validated output or
-    throws** — the schema-validation gate lives here per CLAUDE.md hard rule
-    1. Despite the name it serves both `branch-office` and `smb-flat`
-    params — same topology shape, different device counts; see the doc
-    comment on the function for why one composer, not two.
-- `packages/llm-extraction` (new package): the Claude API call.
-  - `client.ts`: a narrow `ExtractionClient` interface (`createMessage`) so
-    everything is testable with a fake client, no network/API key needed in
-    tests. `createAnthropicExtractionClient()` is the real implementation,
-    lazily importing `@anthropic-ai/sdk` so that import (and the
-    `ANTHROPIC_API_KEY` requirement) only bites the code path that actually
-    calls Claude.
-  - `prompt.ts`: system prompt + **3 few-shot examples** (prose + expected
-    tool input, each parsed through `designParamsSchema` at module load so a
-    typo fails immediately). The Claude tool's `input_schema` is derived
-    from `designParamsSchema` via `zod-to-json-schema` — one source of
-    truth, no hand-duplicated JSON schema to drift.
-  - `extract.ts`: `extractDesignParams()` forces the tool call
-    (`tool_choice`), `parseExtractionResponse()` is split out as a pure,
-    client-free function and throws `DesignParamsExtractionError` with a
-    human-readable reason (no tool_use block, or validation failure).
-  - `generate.ts`: `generateBranchOfficeDesign(prose, { client })` — chains
-    extraction → `composeBranchOfficeDesign`. This is the
-    `user prose → design-params → design JSON` pipeline CLAUDE.md describes,
-    minus the not-yet-built apps/web wiring around it.
-  - Model default is `claude-sonnet-5`; override via `{ model }`.
-- Golden scenarios **G1** (branch-office: 2 routers HSRP, 2 switches, 1
-  firewall, 3 VLANs) and **G4** (smb-flat: 1 router, 1 switch, 1 firewall,
-  corp+guest VLANs) now have design-params fixtures
-  (`packages/design-engine/test/golden/fixtures/g{1,4}-*-params.ts`) run
-  through `composeBranchOfficeDesign` with snapshot tests
-  (`compose-g1-branch-office.test.ts`, `compose-g4-smb-simple.test.ts`),
-  each also asserting zero subnet overlap and determinism. (G1's original
-  ip-allocation-only fixture/test from Session 1 is untouched and still
-  passes — it exercises `planIpAllocation` directly, one level down from
-  the new composer-level tests.)
-- 79 tests total, all green. No apps/web yet, no vsdx service yet.
+- TS workspace unchanged in shape from Session 2: `packages/schema`,
+  `packages/design-engine`, `packages/llm-extraction`. 79 tests, all green.
+- **`services/vsdx`** (new — first and only place Python is used, per
+  CLAUDE.md): a FastAPI service, `POST /export` (design JSON in, `.vsdx`
+  bytes out, `Content-Type: application/vnd.ms-visio.drawing`) and
+  `GET /healthz`. Own venv at `services/vsdx/.venv`; `pip install -e ".[dev]"`
+  then `pytest` (29 tests). Not wired into the pnpm workspace — it's a
+  separately-deployed Python service, so it stays outside `pnpm-workspace.yaml`.
+  - `app/models.py`: pydantic mirror of `design-schema.json` (Python's
+    counterpart to `packages/schema`'s zod validators). Strictly typed for
+    devices/links/segments/meta (what this service renders);
+    routing/security/cloud are permissive passthrough dicts since nothing
+    here reads them. `tests/test_models.py` drift-guards the `Literal` enums
+    against the canonical `packages/schema/src/design-schema.json` by
+    relative path — same role as `schema-drift-guard.test.ts` on the TS side.
+  - `app/vsdx_builder.py`: `build_vsdx_bytes(design)` — one rectangle shape
+    per device (fill color by role, `app/colors.py`), grid-laid-out (max 4
+    cols, page grows to fit), device id/role/vendor/hostname/mgmtIp/loopback/
+    zone embedded as real Visio **Shape Data** (custom properties, not just
+    text). One connector per link via `vsdx.Connect.create()`, skipping any
+    link with an end outside the device list (`renderable_links()`).
+  - `app/templates/blank.vsdx`: checked-in binary template every export
+    starts from — `vsdx.VisioFile(path)` can only *open* a file, there's no
+    "create blank" API. Derived from vsdx's own bundled `media.vsdx` (its one
+    demo shape stripped out) rather than hand-built, because a from-scratch
+    minimal OOXML zip is missing pieces `vsdx.Connect.create()` needs when it
+    lazily bootstraps the connector master. Regenerate via
+    `app/templates/generate_blank_template.py` (only needed if the `vsdx` pin
+    changes). See `services/vsdx/README.md` for the full why.
+  - `app/structural_validator.py`: `validate_vsdx_structure(bytes, design)` —
+    unzips, checks required OOXML parts, and cross-checks shape count
+    (`devices + renderable_links`), `<Connect>` count (`2 * renderable_links`),
+    and that every device's Shape Data actually matches that device (not
+    just that some shape exists). This is NOT the golden-`.vsdx`-file
+    comparison CLAUDE.md describes for real-Visio-validated exports — that's
+    a Session-4 weekend-gate concern once export *quality* is being judged.
+  - Fixed a `vsdx==0.6.1` bug in `_fix_connector_trigger_formulas()`:
+    `Connect.create()`'s formula rewrite drops a `.` (`Sheet1!` instead of
+    `Sheet.1!`), which wouldn't break vsdx's own round-tripping but likely
+    breaks a real Visio's live re-glue tracking.
+  - `tests/fixtures/g{1,4}_*.json` are hand-transcribed from the TS
+    composer's G1/G4 snapshot output (`packages/design-engine/test/golden/
+    __snapshots__/`) — same golden scenarios, both languages, kept in sync
+    by eye for now (no automated cross-language sync yet).
+  - Manually spot-checked: exported G1 to `.vsdx`, confirmed `file` IDs it as
+    "Microsoft Visio 2013+" and it round-trips through `vsdx.VisioFile()`
+    itself. **Not yet opened in real Visio/draw.io/LibreOffice** — that's
+    explicitly a human weekend-gate step (BUILD_PLAN Session 4), not
+    something to fake from this session.
 
-## Next step (Session 3, per BUILD_PLAN.md)
+## Next step (Session 4, per BUILD_PLAN.md)
 
-Create `services/vsdx`: a FastAPI service with `POST /export` taking design
-JSON, using the `vsdx` Python library to build a diagram — shapes per device
-role, connectors per link, device properties embedded as Visio shape data.
-Include a structural validator (unzip the .vsdx, check XML parts) and pytest
-coverage. This is the first and only place Python is used in the repo.
+Wire engine → vsdx service end-to-end via a CLI script. Then the WEEKEND
+GATE: open the G1 and G4 exports in real Visio (or Visio web viewer),
+draw.io, and LibreOffice Draw. Judge: would you hand this to a client after
+≤15 min of cleanup? If no, Phase 0.5 (fixing export quality) comes before
+any UI work — see BUILD_PLAN.md's framing, this gate is the whole point of
+Phase 0.
 
 ## Notes / decisions made without asking (boring-option calls)
 
-- `designParamsSchema` lives in `packages/schema`, not `packages/
-  llm-extraction` or `packages/design-engine` — it's the contract between
-  those two modules, and `packages/schema` is already "the contract between
-  ALL modules" per CLAUDE.md. Avoids a circular dependency (llm-extraction →
-  design-engine → schema is fine; schema never depends back on either).
-- Anthropic tool input_schema needed a `Tool[]` cast in `client.ts` — the
-  SDK's `InputSchema` type wants a narrower literal shape than a plain
-  `Record<string, unknown>` JSON-schema-shaped object; the real work of
-  keeping that schema correct is delegated to `zod-to-json-schema` +
-  `designParamsSchema`, so the cast is just bridging two type
-  representations of the same validated-at-runtime object, not a
-  correctness risk.
-- `composeBranchOfficeDesign` does not yet populate per-device
-  `interfaces[]` (trunk/allowedVlans/per-interface IP) — out of scope for
-  this session (config-gen, which actually needs that detail, isn't built
-  yet). Flagged as a `meta.assumptions` entry in every composed design so
-  it's visible, not silently missing.
-- Router↔router peer links are intentionally not modeled even when
-  `router.count > 1` — HSRP peers over the shared VLAN segment, and the
-  Session-1 G1 ip-allocation fixture already established that shape; adding
-  a direct P2P peer link would be a design opinion beyond what either
-  golden scenario asked for.
-- No `apps/web` wiring yet — `generateBranchOfficeDesign()` is a complete,
-  tested library function; hooking it to a Next.js API route is Phase 1
-  (Sessions 5-6), not this session.
+- `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
+  `.venv`), not part of the pnpm workspace — it's deployed separately per
+  CLAUDE.md, so there was never a reason to fold it into the TS tooling.
+- Devices only — VLAN/segment shapes are not drawn on the diagram this
+  session. The task was "shapes per device role, connectors per link,"
+  segments weren't asked for, and adding them would have meant inventing an
+  unrequested visual convention (grouping box? separate shape type?)
+  without a golden scenario to anchor the decision against.
+- Router↔router / redundancy-group visual grouping (e.g. a dashed box around
+  an HSRP pair) also not drawn — same reasoning, not asked for, and a real
+  design opinion better made once real Visio output has actually been judged
+  in the Session-4 weekend gate.
+- Shape Data field list (id/role/vendorHint/hostname/mgmtIp/loopback/zone)
+  is deliberately a fixed, hand-picked subset of Device's fields, not "every
+  field on the device" — `interfaces[]` isn't flattened into shape data
+  since it's a list, not a scalar, and doesn't have an obvious single-value
+  representation in a custom property.
