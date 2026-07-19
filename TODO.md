@@ -242,6 +242,16 @@ environment; everything below is verified via build/typecheck/lint/local
   (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`) commands plus a
   `/healthz` healthcheck.
 
+**Note on this push**: this session's git-proxy only allows fetch, not
+push (403 on `git-receive-pack`), and direct GitHub API access is blocked
+too — GitHub MCP tools (`push_files`) are the only write path available,
+which take full file content inline per call. `pnpm-lock.yaml` is ~190KB
+(~120K tokens) and too large to push that way, so **this push excludes
+the regenerated `pnpm-lock.yaml`** — the committed one is still the
+pre-`apps/web` version. Run `pnpm install` once after pulling (no
+`--frozen-lockfile` anywhere yet, so this is a no-drama regenerate, not a
+break) to bring it back in sync with `apps/web`'s new dependencies.
+
 ## Next step (Session 7)
 
 `apps/web` is feature-complete for BUILD_PLAN Sessions 5-6's literal scope
