@@ -9,9 +9,17 @@
     "test": "pnpm run build && pnpm -r --if-present run test",
     "test:golden": "pnpm run build && pnpm -r --if-present run test:golden",
     "lint": "pnpm -r --if-present run lint",
-    "typecheck": "pnpm run build && pnpm -r --if-present run typecheck"
+    "typecheck": "pnpm run build && pnpm -r --if-present run typecheck && tsc -p tsconfig.json --noEmit",
+    "generate": "pnpm run build && tsx scripts/generate-design.ts"
+  },
+  "dependencies": {
+    "@netdesign/design-engine": "workspace:*",
+    "@netdesign/llm-extraction": "workspace:*",
+    "@netdesign/schema": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   }

@@ -6,6 +6,22 @@ exports[`golden G4 smb-simple — full design composition > matches the recorded
     {
       "hostname": "rtr-01",
       "id": "rtr-01",
+      "interfaces": [
+        {
+          "description": "Firewall uplink to fw-01",
+          "ip": "10.40.1.3/31",
+          "name": "eth0/0",
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to sw-01",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
       "loopback": "10.40.1.0/32",
       "mgmtIp": "10.40.0.2",
       "role": "router",
@@ -14,6 +30,17 @@ exports[`golden G4 smb-simple — full design composition > matches the recorded
     {
       "hostname": "sw-01",
       "id": "sw-01",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to rtr-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+      ],
       "mgmtIp": "10.40.0.3",
       "role": "access-switch",
       "vendorHint": "cisco-ios",
@@ -21,6 +48,13 @@ exports[`golden G4 smb-simple — full design composition > matches the recorded
     {
       "hostname": "fw-01",
       "id": "fw-01",
+      "interfaces": [
+        {
+          "description": "Firewall uplink to rtr-01",
+          "ip": "10.40.1.2/31",
+          "name": "eth0/0",
+        },
+      ],
       "loopback": "10.40.1.1/32",
       "mgmtIp": "10.40.0.4",
       "role": "firewall",
@@ -29,23 +63,21 @@ exports[`golden G4 smb-simple — full design composition > matches the recorded
   ],
   "links": [
     {
-      "a": "fw-01",
-      "b": "rtr-01",
+      "a": "fw-01:eth0/0",
+      "b": "rtr-01:eth0/0",
       "kind": "ethernet",
       "label": "Firewall uplink",
       "subnet": "10.40.1.2/31",
     },
     {
-      "a": "rtr-01",
-      "b": "sw-01",
+      "a": "rtr-01:eth0/1",
+      "b": "sw-01:eth0/0",
       "kind": "ethernet",
       "label": "Access trunk",
     },
   ],
   "meta": {
-    "assumptions": [
-      "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session.",
-    ],
+    "assumptions": [],
     "designPattern": "smb-flat",
     "intentSummary": "Single-router SMB design with one access switch and an edge firewall serving corp and guest VLANs.",
     "name": "G4 Small Office",

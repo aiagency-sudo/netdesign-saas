@@ -30,6 +30,20 @@ describe("golden G1 branch-office — full design composition", () => {
     expect(findOverlappingSubnetsInDesign(design)).toEqual([]);
   });
 
+  it("embeds a port name on every link endpoint and a matching interfaces[] entry on every device", () => {
+    for (const link of design.links) {
+      expect(link.a).toMatch(/^[a-z0-9-]+:eth0\/\d+$/);
+      expect(link.b).toMatch(/^[a-z0-9-]+:eth0\/\d+$/);
+    }
+    for (const device of design.devices) {
+      expect(device.interfaces?.length).toBeGreaterThan(0);
+    }
+    // fw-01 has 2 P2P uplinks (to rtr-01, rtr-02) — both should carry a /31 IP, no trunk.
+    const fw = design.devices.find((d) => d.id === "fw-01")!;
+    expect(fw.interfaces).toHaveLength(2);
+    expect(fw.interfaces!.every((i) => i.ip?.endsWith("/31") && !i.trunk)).toBe(true);
+  });
+
   it("is deterministic across repeated composition", () => {
     expect(composeBranchOfficeDesign(g1BranchOfficeParams)).toEqual(design);
   });

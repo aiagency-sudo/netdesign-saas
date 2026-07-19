@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "meta": {
+    "name": "G4 Small Office",
+    "intentSummary": "Single-router SMB design with one access switch and an edge firewall serving corp and guest VLANs.",
+    "designPattern": "smb-flat",
+    "assumptions": [],
+    "warnings": []
+  },
+  "devices": [
+    {
+      "id": "rtr-01", "hostname": "rtr-01", "role": "router", "vendorHint": "cisco-ios",
+      "mgmtIp": "10.40.0.2", "loopback": "10.40.1.0/32",
+      "interfaces": [
+        { "name": "eth0/0", "ip": "10.40.1.3/31", "description": "Firewall uplink to fw-01" },
+        { "name": "eth0/1", "trunk": true, "allowedVlans": [10, 20], "description": "Access trunk to sw-01" }
+      ]
+    },
+    {
+      "id": "sw-01", "hostname": "sw-01", "role": "access-switch", "vendorHint": "cisco-ios", "mgmtIp": "10.40.0.3",
+      "interfaces": [
+        { "name": "eth0/0", "trunk": true, "allowedVlans": [10, 20], "description": "Access trunk to rtr-01" }
+      ]
+    },
+    {
+      "id": "fw-01", "hostname": "fw-01", "role": "firewall", "vendorHint": "fortinet-fortigate",
+      "mgmtIp": "10.40.0.4", "loopback": "10.40.1.1/32",
+      "interfaces": [
+        { "name": "eth0/0", "ip": "10.40.1.2/31", "description": "Firewall uplink to rtr-01" }
+      ]
+    }
+  ],
+  "links": [
+    { "a": "fw-01:eth0/0", "b": "rtr-01:eth0/0", "kind": "ethernet", "label": "Firewall uplink", "subnet": "10.40.1.2/31" },
+    { "a": "rtr-01:eth0/1", "b": "sw-01:eth0/0", "kind": "ethernet", "label": "Access trunk" }
+  ],
+  "segments": [
+    { "name": "corp", "vlanId": 10, "cidr": "10.40.2.0/24", "gateway": "10.40.2.1", "purpose": "user", "dhcp": true },
+    { "name": "guest", "vlanId": 20, "cidr": "10.40.3.0/24", "gateway": "10.40.3.1", "purpose": "guest", "dhcp": true }
+  ],
+  "routing": {
+    "igp": "static",
+    "firstHopRedundancy": "none",
+    "defaultRoute": "0.0.0.0/0"
+  }
+}

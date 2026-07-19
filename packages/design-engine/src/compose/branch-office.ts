@@ -1,6 +1,6 @@
-import type { Design, DesignParams, DesignParamsVlan, DeviceRole, VendorHint } from "@netdesign/schema";
+import type { Design, DesignParams, DesignParamsVlan, DeviceRole, Interface, VendorHint } from "@netdesign/schema";
 import { parseDesign } from "@netdesign/schema";
-import { planIpAllocation } from "../ip-allocation/plan.js";
+import { planIpAllocation, type P2pLinkAllocation } from "../ip-allocation/plan.js";
 import { mustGet } from "../util.js";
 
 const DEFAULT_SITE_SUPERNET = "10.0.0.0/16";
@@ -61,9 +61,6 @@ export function composeBranchOfficeDesign(params: DesignParams): Design {
       "Multiple routers were requested with no redundancy protocol specified; they are not configured as an HSRP/VRRP pair.",
     );
   }
-  assumptions.push(
-    "Per-interface VLAN trunk assignment is not yet populated on device interfaces; config-gen will need this in a later session.",
-  );
 
   const plan = planIpAllocation({
     siteSupernet,
@@ -72,10 +69,13 @@ export function composeBranchOfficeDesign(params: DesignParams): Design {
     segments: params.vlans.map((vlan) => ({ name: vlan.name })),
   });
 
+  const { linkInterfaces, interfacesByDevice } = assignInterfaces(logicalLinks, plan.p2pLinks, Object.values(vlanIds));
+
   const devices = managedDeviceIds.map((id) => {
     const role = mustGet(roleById, id, "device role");
     const loopback = plan.loopbacks[id];
     const isRedundantRouter = role === "router" && params.router.count > 1 && params.router.redundancy !== "none";
+    const interfaces = interfacesByDevice.get(id);
     return {
       id,
       hostname: id,
@@ -84,14 +84,16 @@ export function composeBranchOfficeDesign(params: DesignParams): Design {
       mgmtIp: mustGet(plan.mgmt.deviceIps, id, "mgmt IP"),
       ...(loopback ? { loopback } : {}),
       ...(isRedundantRouter ? { redundancyGroup: "hsrp-1" } : {}),
+      ...(interfaces && interfaces.length > 0 ? { interfaces } : {}),
     };
   });
 
   const links = logicalLinks.map((link) => {
     const p2p = plan.p2pLinks[link.id];
+    const { ifaceA, ifaceB } = mustGet(linkInterfaces, link.id, "link interface assignment");
     return {
-      a: link.a,
-      b: link.b,
+      a: `${link.a}:${ifaceA}`,
+      b: `${link.b}:${ifaceB}`,
       kind: link.kind,
       label: link.label,
       ...(p2p ? { subnet: p2p.cidr } : {}),
@@ -173,4 +175,53 @@ function buildLogicalLinks(input: { routerIds: string[]; switchIds: string[]; fi
   }
 
   return links;
+}
+
+/**
+ * Assigns a vendor-neutral interface name (eth0/0, eth0/1, ...) per device
+ * per link it participates in, sequential in link order — this is what
+ * lets the diagram show port names instead of bare device-to-device lines.
+ * Also builds each device's `interfaces[]`: P2P links (both ends
+ * L3-capable, per `plan.p2pLinks`) get that side's assigned IP; everything
+ * else (router<->switch trunks, switch<->switch interlinks) is marked as a
+ * VLAN trunk carrying every VLAN in this design — there's no per-switch
+ * VLAN membership modeling yet, so "all VLANs on every trunk" is the only
+ * consistent answer today.
+ */
+function assignInterfaces(
+  links: LogicalLink[],
+  p2pLinks: Record<string, P2pLinkAllocation>,
+  allVlanIds: number[],
+): { linkInterfaces: Map<string, { ifaceA: string; ifaceB: string }>; interfacesByDevice: Map<string, Interface[]> } {
+  const interfaceCounters = new Map<string, number>();
+  const nextInterfaceName = (deviceId: string): string => {
+    const n = interfaceCounters.get(deviceId) ?? 0;
+    interfaceCounters.set(deviceId, n + 1);
+    return `eth0/${n}`;
+  };
+
+  const linkInterfaces = new Map<string, { ifaceA: string; ifaceB: string }>();
+  const interfacesByDevice = new Map<string, Interface[]>();
+  const addInterface = (deviceId: string, iface: Interface) => {
+    const list = interfacesByDevice.get(deviceId) ?? [];
+    list.push(iface);
+    interfacesByDevice.set(deviceId, list);
+  };
+
+  for (const link of links) {
+    const ifaceA = nextInterfaceName(link.a);
+    const ifaceB = nextInterfaceName(link.b);
+    linkInterfaces.set(link.id, { ifaceA, ifaceB });
+
+    const p2p = p2pLinks[link.id];
+    if (p2p) {
+      addInterface(link.a, { name: ifaceA, ip: `${p2p.ipA}/31`, description: `${link.label} to ${link.b}` });
+      addInterface(link.b, { name: ifaceB, ip: `${p2p.ipB}/31`, description: `${link.label} to ${link.a}` });
+    } else {
+      addInterface(link.a, { name: ifaceA, trunk: true, allowedVlans: allVlanIds, description: `${link.label} to ${link.b}` });
+      addInterface(link.b, { name: ifaceB, trunk: true, allowedVlans: allVlanIds, description: `${link.label} to ${link.a}` });
+    }
+  }
+
+  return { linkInterfaces, interfacesByDevice };
 }
