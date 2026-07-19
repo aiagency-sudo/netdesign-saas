@@ -1,9 +1,9 @@
 # TODO — NetDesign AI
 
 Read this first each session. Repo is green: `pnpm test` / `pnpm test:golden`
-/ `pnpm typecheck` (TypeScript workspace, now including `scripts/`) and
-`services/vsdx`'s `pytest` (Python, separate venv) both pass as of the
-state below.
+/ `pnpm typecheck` / `pnpm --filter @netdesign/web run lint` (TypeScript
+workspace, now including `apps/web` and `scripts/`) and `services/vsdx`'s
+`pytest` (Python, separate venv) both pass as of the state below.
 
 ## Where things stand (after Session 5 — Phase 0 + port-name labels)
 
@@ -152,20 +152,123 @@ state below.
     and re-sent both exports — **this second round's founder confirmation
     is what's pending**, not blocking Session 6's start.
 
-## Next step (Session 6, per BUILD_PLAN.md Sessions 5-6)
+## Where things stand (after Session 6 — apps/web scaffolded)
 
-**Phase 0 is done and port names are shipped.** Founder gave the green
-light to start Phase 1: "Build the Next.js app: Supabase auth (email magic
-link), projects table, a prompt page that calls the pipeline, and a React
-Flow canvas rendering the design JSON with role-based node icons and zone
-grouping. Deploy to Vercel; deploy services/vsdx to Railway." This is the
-first work in `apps/web` — nothing there yet, first time this repo needs
-external service credentials (Supabase, Vercel, Railway) instead of just
-local/CI-only tooling.
+**Phase 1 built**: `apps/web`, a Next.js 16 (App Router, TypeScript strict)
+app, new pnpm workspace member. Built entirely against placeholder env vars
+per the founder's explicit call ("no accounts yet — build first") — no
+Supabase/Vercel/Railway credentials exist anywhere in this repo or
+environment; everything below is verified via build/typecheck/lint/local
+`next dev`, not against a real backend.
 
-Still separately open, deliberately not blocking Phase 1: real stencils for
-routers/switches/firewalls instead of generic colored rectangles. Leaning
-against proprietary Microsoft/Cisco stencils (licensing + the
+- **Auth (Supabase magic link, owner-only — no roles/teams per CLAUDE.md's
+  scope guard)**: `lib/supabase/{client,server,middleware,env,types}.ts`
+  following Supabase's current SSR pattern (`getAll`/`setAll` cookie
+  adapters, `@supabase/ssr`). `app/login/page.tsx` (email input ->
+  `signInWithOtp`), `app/auth/callback/route.ts` (exchanges the magic-link
+  `code` for a session). Route gating lives in `proxy.ts` (Next.js 16
+  renamed the `middleware.ts` convention to `proxy.ts` — the old name still
+  works but is deprecated with a build warning, so this repo uses the new
+  name from the start) + `lib/supabase/middleware.ts`'s `updateSession()`:
+  unauthenticated requests to anything but `/`, `/login`, `/auth/callback`
+  redirect to `/login`; authenticated requests to `/login` redirect to
+  `/projects`. `lib/supabase/types.ts`'s `Database` type includes empty
+  `Views`/`Functions`/`Enums`/`CompositeTypes` — recent `@supabase/supabase-js`
+  needs the full shape or query builder methods like `.insert()` silently
+  degrade to `never` and the whole call site stops typechecking usefully.
+- **`supabase/migrations/0001_init.sql`**: one table, `public.projects`
+  (`owner_id` FK to `auth.users`, `name`, `prompt`, `design_json jsonb`,
+  timestamps + an `updated_at` trigger). RLS on, four owner-only policies
+  (select/insert/update/delete all gated on `auth.uid() = owner_id`) — no
+  service-role key needed anywhere in `apps/web`, every DB call rides the
+  logged-in user's session and RLS does the enforcement. Deliberately no
+  versioning/history table yet (BUILD_PLAN Sessions 7-8 territory).
+- **`app/api/generate/route.ts`**: the actual pipeline wiring. Auth-gates
+  on the session user, 503s cleanly if `ANTHROPIC_API_KEY` isn't set,
+  validates the request body with zod, then just calls
+  `generateBranchOfficeDesign()` from `@netdesign/llm-extraction` (already
+  built in Session 2 — this route adds zero new pipeline logic, only
+  auth + persistence around it) and inserts the result into `projects`.
+  `DesignParamsExtractionError`/`DesignValidationError` map to `422` with
+  the underlying human-readable message; anything else is a `500`.
+- **Pages**: `app/projects/page.tsx` (list, server component, relies on RLS
+  to scope the query), `app/projects/new/page.tsx` (client component, the
+  prompt textarea, POSTs to `/api/generate`, redirects to the new
+  project), `app/projects/[id]/page.tsx` (server component, Next 16's
+  `params` is now `Promise`-typed — awaited before use — fetches the row
+  and hands `design_json` to `DesignCanvas`).
+- **React Flow canvas** (`@xyflow/react` — the actively maintained
+  successor package; plain `reactflow` is in maintenance mode now):
+  `lib/design-to-flow.ts` is a pure `Design -> {nodes, edges}` function
+  (unit-testable, no test written yet — see below), grouping devices into
+  one `zone`-type group node per distinct `device.zone` (devices with no
+  zone share an "Ungrouped" group) with a wrapping grid layout inside each
+  zone and zones placed left-to-right; `components/flow/DeviceNode.tsx`
+  renders each device with a role-based icon
+  (`components/flow/device-icons.tsx`, `lucide-react`, one icon per
+  `DeviceRole` enum value) and hostname/role text; edges get a label built
+  from both ends' interface names (`rtr-01:eth0/0` -> shows `eth0/0` on
+  that end), reusing the port-name data the design-engine already
+  populates — no new data needed for this.
+- Tailwind v4 (CSS-first config, no `tailwind.config.ts` — just
+  `@import "tailwindcss"` in `app/globals.css` + `@tailwindcss/postcss` in
+  `postcss.config.mjs`), ESLint 9 flat config using `eslint-config-next`'s
+  native flat-config export directly (its `FlatCompat`-wrapped legacy
+  strings like `"next/core-web-vitals"` threw a circular-JSON crash under
+  this exact eslint-config-next/eslint/eslint-plugin-react version
+  combination — switched to `import nextConfig from "eslint-config-next"`
+  instead of chasing the incompatibility further).
+- **Verified**: `pnpm run build` (all 4 TS packages + `next build`),
+  `pnpm run typecheck`, `pnpm run test` (existing 84 tests, apps/web has no
+  test script yet so it's skipped, not failing), `pnpm --filter
+  @netdesign/web run lint` (clean), and a real `next dev` smoke test
+  against placeholder Supabase env vars: `/` redirects to `/login` (307),
+  `/login` renders real content, `/projects` correctly redirects
+  unauthenticated requests back to `/login` — the full auth-gate flow
+  works end-to-end even though no real Supabase project exists yet
+  (`getUser()` fails closed on an unreachable Supabase URL rather than
+  throwing). **Not verified**: the actual magic-link email round-trip, the
+  `/api/generate` route against a live Claude call, or the
+  `DesignCanvas`/React Flow rendering with real data — none of that is
+  possible without real credentials, which the founder explicitly deferred.
+- **Deploy config prepared, not executed** (no accounts exist to deploy
+  to): `apps/web/.env.example` documents all four env vars
+  (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `ANTHROPIC_API_KEY`, `VSDX_SERVICE_URL`). Vercel needs no config file for
+  a pnpm-workspace monorepo — just set the project's Root Directory to
+  `apps/web` in the dashboard and it autodetects the rest; noting that here
+  since there's no vercel.json to point to. `services/vsdx/railway.json`
+  sets the Nixpacks build (`pip install -e .`) and start
+  (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`) commands plus a
+  `/healthz` healthcheck.
+
+## Next step (Session 7)
+
+`apps/web` is feature-complete for BUILD_PLAN Sessions 5-6's literal scope
+and green on every check that doesn't require real credentials. Before
+going further:
+
+1. **Founder needs to actually create the Supabase/Vercel/Railway
+   accounts** and provide real values for `apps/web/.env.example` — nothing
+   past this point can be verified further without them (the magic-link
+   flow, `/api/generate` against a live Claude call, the canvas with real
+   generated data, and the two live deploys).
+2. Once real Supabase credentials exist: run `supabase/migrations/0001_init.sql`
+   against the real project, do a real signup + generate cycle by hand, and
+   only then decide whether `DesignCanvas`/`design-to-flow.ts` need unit
+   tests or whether hand-verification was sufficient (no test was written
+   this session — there was no real design JSON shape risk beyond what
+   `@netdesign/schema`'s own types already guarantee, and the layout math
+   is straightforward enough that a founder eyeball on real output seemed
+   higher-value than a snapshot test of arbitrary pixel positions).
+3. Live deploys to Vercel (`apps/web`) and Railway (`services/vsdx`) — per
+   this repo's standing rule on hard-to-reverse/external actions, these
+   need explicit founder go-ahead at the time, not just because BUILD_PLAN
+   mentions them.
+
+Still separately open, deliberately not blocking: real stencils for
+routers/switches/firewalls instead of generic colored rectangles/icons.
+Leaning against proprietary Microsoft/Cisco stencils (licensing + the
 `Connect.create()` master-copying fragility already seen once), toward
 hand-built vendor-neutral vector icon shapes over embedded raster/SVG — but
 this is the founder's call, not decided.
