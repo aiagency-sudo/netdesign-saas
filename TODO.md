@@ -242,39 +242,69 @@ environment; everything below is verified via build/typecheck/lint/local
   (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`) commands plus a
   `/healthz` healthcheck.
 
-**Note on this push**: this session's git-proxy only allows fetch, not
-push (403 on `git-receive-pack`), and direct GitHub API access is blocked
-too — GitHub MCP tools (`push_files`) are the only write path available,
-which take full file content inline per call. `pnpm-lock.yaml` is ~190KB
-(~120K tokens) and too large to push that way, so **this push excludes
-the regenerated `pnpm-lock.yaml`** — the committed one is still the
-pre-`apps/web` version. Run `pnpm install` once after pulling (no
-`--frozen-lockfile` anywhere yet, so this is a no-drama regenerate, not a
-break) to bring it back in sync with `apps/web`'s new dependencies.
+**Push note (resolved)**: this session's git-proxy was initially read-only
+and the GitHub App had no installation on this repo (403s on both `git
+push` and the GitHub MCP tools) — fixed by installing the Claude GitHub
+App on `aiagency-sudo` with access to `netdesign-saas`. A plain `git push`
+then worked and carried the full commit history, including the properly
+regenerated `pnpm-lock.yaml` (an earlier `push_files` workaround attempt
+had excluded it for size reasons, but that was superseded once `git push`
+itself started working) — no `pnpm install` catch-up needed.
 
-## Next step (Session 7)
+## Next step (Session 7) — founder checklist to get `apps/web` live
 
 `apps/web` is feature-complete for BUILD_PLAN Sessions 5-6's literal scope
-and green on every check that doesn't require real credentials. Before
-going further:
+and green on every check that doesn't require real credentials. Founder
+now has Supabase + Vercel accounts (GitHub repo linked, Supabase↔Vercel
+integration connected) and has kept Railway as the `services/vsdx` deploy
+target (can revisit later — see "Vercel vs Railway vs Fly.io" note below).
+Remaining work, roughly in order:
 
-1. **Founder needs to actually create the Supabase/Vercel/Railway
-   accounts** and provide real values for `apps/web/.env.example` — nothing
-   past this point can be verified further without them (the magic-link
-   flow, `/api/generate` against a live Claude call, the canvas with real
-   generated data, and the two live deploys).
-2. Once real Supabase credentials exist: run `supabase/migrations/0001_init.sql`
-   against the real project, do a real signup + generate cycle by hand, and
-   only then decide whether `DesignCanvas`/`design-to-flow.ts` need unit
-   tests or whether hand-verification was sufficient (no test was written
-   this session — there was no real design JSON shape risk beyond what
-   `@netdesign/schema`'s own types already guarantee, and the layout math
-   is straightforward enough that a founder eyeball on real output seemed
-   higher-value than a snapshot test of arbitrary pixel positions).
-3. Live deploys to Vercel (`apps/web`) and Railway (`services/vsdx`) — per
-   this repo's standing rule on hard-to-reverse/external actions, these
-   need explicit founder go-ahead at the time, not just because BUILD_PLAN
-   mentions them.
+1. **Merge this branch to `main`** (PR not yet opened — founder wants to
+   review the diff first; ask before opening one, per standing instruction
+   not to create PRs unassisted). Vercel/Railway should deploy off `main`.
+2. **Supabase**:
+   - Run `supabase/migrations/0001_init.sql` against the real project (SQL
+     Editor, or `supabase db push` if the CLI is linked) — creates
+     `projects` + its RLS policies. Nothing works without this.
+   - Authentication → URL Configuration: add the Vercel deployment's
+     `/auth/callback` URL to allowed redirects, or magic links silently
+     fail.
+3. **Vercel**:
+   - Set the project's **Root Directory to `apps/web`** — easy to miss in
+     a pnpm monorepo, and the single most likely thing to break the build.
+   - Confirm the Supabase integration actually injected
+     `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   - Manually add `ANTHROPIC_API_KEY` (integration won't provide it).
+   - `VSDX_SERVICE_URL` is **not yet consumed anywhere in `apps/web`** —
+     `/api/generate` only extracts + composes + saves `design_json` to
+     Supabase; it never calls `services/vsdx`. So the web app can go live
+     and be fully useful (auth, prompt -> design -> React Flow canvas)
+     with zero Railway dependency. `.vsdx` export today only exists via
+     the local CLI script (`pnpm generate`).
+4. **Railway** (only once `.vsdx` export actually needs to be reachable
+   from the deployed web app — not blocking step 3): new project pointed
+   at this repo, build/root context `services/vsdx`, should pick up the
+   checked-in `railway.json` automatically. Wiring `/api/generate` (or a
+   new route) to actually call the deployed vsdx service and offer a
+   download is unbuilt — next real feature after the web app is live.
+5. Once real Supabase credentials exist end-to-end: do one real signup +
+   prompt + generate cycle by hand, then decide whether
+   `DesignCanvas`/`design-to-flow.ts` need unit tests or whether
+   hand-verification was sufficient (none written yet — no real design
+   JSON shape risk beyond what `@netdesign/schema` already guarantees, and
+   a founder eyeball on real rendered output seemed higher-value than a
+   snapshot test of arbitrary pixel positions).
+
+**Vercel vs Railway vs Fly.io for `services/vsdx`** (asked about, not
+decided): founder chose to keep Railway for now, adjustable later.
+Alternatives if reconsidered: Vercel itself supports Python/ASGI
+serverless functions, which would mean zero new accounts (same Vercel
+project family) at the cost of a ~10s execution-time limit and needing to
+confirm the checked-in `blank.vsdx` binary template bundles correctly as
+a static asset; Fly.io is the other option CLAUDE.md already names
+alongside Railway — a persistent container, closest to Railway's own
+model, solid free tier.
 
 Still separately open, deliberately not blocking: real stencils for
 routers/switches/firewalls instead of generic colored rectangles/icons.
