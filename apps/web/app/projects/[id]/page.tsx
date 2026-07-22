@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { DesignCanvas } from "@/components/DesignCanvas";
+import { ProjectTabs } from "@/components/ProjectTabs";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +16,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
       <p className="mb-6 whitespace-pre-wrap text-sm text-slate-500">{project.prompt}</p>
       {project.design_json ? (
-        <DesignCanvas design={project.design_json} />
+        <ProjectTabs design={project.design_json} />
       ) : (
         <p className="text-sm text-slate-500">No design generated yet.</p>
       )}
