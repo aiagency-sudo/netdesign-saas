@@ -13,8 +13,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
-      <p className="mb-6 whitespace-pre-wrap text-sm text-slate-500">{project.prompt}</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
+          <p className="whitespace-pre-wrap text-sm text-slate-500">{project.prompt}</p>
+        </div>
+        {project.design_json && (
+          <a
+            href={`/api/projects/${project.id}/export`}
+            className="shrink-0 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+          >
+            Download .vsdx
+          </a>
+        )}
+      </div>
       {project.design_json ? (
         <ProjectTabs design={project.design_json} />
       ) : (
