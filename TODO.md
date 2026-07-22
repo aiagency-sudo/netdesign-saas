@@ -251,50 +251,101 @@ regenerated `pnpm-lock.yaml` (an earlier `push_files` workaround attempt
 had excluded it for size reasons, but that was superseded once `git push`
 itself started working) — no `pnpm install` catch-up needed.
 
-## Next step (Session 7) — founder checklist to get `apps/web` live
+## Phase 1 (BUILD_PLAN Sessions 5-6) — CLOSED OUT
 
-`apps/web` is feature-complete for BUILD_PLAN Sessions 5-6's literal scope
-and green on every check that doesn't require real credentials. Founder
-now has Supabase + Vercel accounts (GitHub repo linked, Supabase↔Vercel
-integration connected) and has kept Railway as the `services/vsdx` deploy
-target (can revisit later — see "Vercel vs Railway vs Fly.io" note below).
-Remaining work, roughly in order:
+`apps/web` deployed to Vercel, PR merged to `main`, Supabase migration run
+against the real project, magic-link auth working end-to-end (after
+fixing two real deploy issues below), and **the founder ran a real
+prompt-to-design generation live in production** — "two redundant routers
+with HSRP, two access switches, a firewall, three VLANs" produced a
+schema-valid Branch Office design, saved to Supabase, and rendered
+correctly in the React Flow canvas (devices, role icons, zone grouping,
+interface-labeled edges). This is the first confirmed real-world proof
+that the full pipeline (Claude extraction → design-engine composition →
+schema validation → persistence → canvas render) works outside local
+dev/tests.
 
-1. **Merge this branch to `main`** (PR not yet opened — founder wants to
-   review the diff first; ask before opening one, per standing instruction
-   not to create PRs unassisted). Vercel/Railway should deploy off `main`.
-2. **Supabase**:
-   - Run `supabase/migrations/0001_init.sql` against the real project (SQL
-     Editor, or `supabase db push` if the CLI is linked) — creates
-     `projects` + its RLS policies. Nothing works without this.
-   - Authentication → URL Configuration: add the Vercel deployment's
-     `/auth/callback` URL to allowed redirects, or magic links silently
-     fail.
-3. **Vercel**:
-   - Set the project's **Root Directory to `apps/web`** — easy to miss in
-     a pnpm monorepo, and the single most likely thing to break the build.
-   - Confirm the Supabase integration actually injected
-     `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-   - Manually add `ANTHROPIC_API_KEY` (integration won't provide it).
-   - `VSDX_SERVICE_URL` is **not yet consumed anywhere in `apps/web`** —
-     `/api/generate` only extracts + composes + saves `design_json` to
-     Supabase; it never calls `services/vsdx`. So the web app can go live
-     and be fully useful (auth, prompt -> design -> React Flow canvas)
-     with zero Railway dependency. `.vsdx` export today only exists via
-     the local CLI script (`pnpm generate`).
-4. **Railway** (only once `.vsdx` export actually needs to be reachable
-   from the deployed web app — not blocking step 3): new project pointed
-   at this repo, build/root context `services/vsdx`, should pick up the
-   checked-in `railway.json` automatically. Wiring `/api/generate` (or a
-   new route) to actually call the deployed vsdx service and offer a
-   download is unbuilt — next real feature after the web app is live.
-5. Once real Supabase credentials exist end-to-end: do one real signup +
-   prompt + generate cycle by hand, then decide whether
-   `DesignCanvas`/`design-to-flow.ts` need unit tests or whether
-   hand-verification was sufficient (none written yet — no real design
-   JSON shape risk beyond what `@netdesign/schema` already guarantees, and
-   a founder eyeball on real rendered output seemed higher-value than a
-   snapshot test of arbitrary pixel positions).
+Two real deploy bugs found and fixed getting here:
+1. **Vercel build failure** ("Module not found: Can't resolve
+   '@netdesign/schema'") — Vercel (Root Directory: `apps/web`) only runs
+   `apps/web`'s own `build` script, not the root script that builds
+   `packages/schema`/`design-engine`/`llm-extraction` to `dist/` first.
+   Fixed by changing `apps/web/package.json`'s `build` script to
+   `pnpm --filter @netdesign/web^... run build && next build` — builds
+   every workspace dependency before `next build`, so the app is buildable
+   standalone from its own directory exactly as Vercel invokes it.
+2. **Supabase magic link `otp_expired` + wrong redirect domain** — Site
+   URL was still the Supabase default `http://localhost:3000`, so a
+   redirect that didn't resolve cleanly fell back to localhost (dead,
+   from a deployed app); separately, the link failed OTP validation
+   outright, most likely a corporate email security scanner/link
+   prefetcher consuming the single-use token before the founder's manual
+   click. Fixed by setting Site URL to the real Vercel domain and
+   confirming the exact `/auth/callback` redirect URL is in the allow
+   list; resolved on retry.
+
+Founder feedback on the first real render, verbatim: diagram connections
+"don't look all that great" — unclear how the access switches connect to
+the router and to each other — and it "doesn't depict the VLANs and
+subnet IP Addresses." Both are real gaps, not bugs: the canvas today only
+draws devices + interface-labeled edges (Session 5-6's literal scope);
+segments/VLANs were explicitly out of scope until now. Directly informs
+Session 7-8 scoping below.
+
+## Next step (Session 7-8, per BUILD_PLAN.md verbatim)
+
+> "Add the design detail view: interactive diagram + tabbed panels for IP
+> Plan (table from segments/links), Device List, and Assumptions. Add
+> Download .vsdx. Add design versioning: each regenerate saves a new
+> version row; list + restore."
+
+Scoped into four independent chunks — not yet built, not yet approved by
+the founder, proposed order below (roughly cheapest/most-requested first):
+
+1. **IP Plan tab** — a table rendering `design.segments` (name, VLAN ID,
+   CIDR, gateway, purpose) and P2P link subnets from `design.links`/
+   `interfaces[].ip`. Directly answers the founder's "doesn't depict
+   VLANs and subnet IP addresses" feedback; pure frontend, zero new
+   infra, no schema/DB changes — the data's already in `design_json`.
+2. **Device List + Assumptions tabs** — Device List is a table over
+   `design.devices` (id, hostname, role, vendorHint, mgmtIp, loopback,
+   zone); Assumptions is just rendering `design.meta.assumptions[]`
+   (already generated by the LLM extraction step, currently displayed
+   nowhere in the UI). Same cost profile as (1) — frontend-only.
+3. **Download .vsdx** — directly answers the founder's separate question
+   ("how do I get this as a .vsdx"). Requires actually deploying
+   `services/vsdx` to Railway (repo-side config already exists:
+   `services/vsdx/railway.json`) plus a new route in `apps/web` (e.g.
+   `POST /api/projects/[id]/export`) that loads that project's
+   `design_json`, POSTs it to the deployed vsdx service's `/export`, and
+   streams the `.vsdx` bytes back as a download; plus a button on the
+   project detail page. This is the one item here needing an external
+   deploy action (Railway) and a new `VSDX_SERVICE_URL` env var on
+   Vercel — flagging per the standing rule on external/hard-to-reverse
+   actions rather than just doing it.
+   - **Workaround available today, no new deploy needed**: pull the
+     already-generated `design_json` for a project straight from
+     Supabase's Table Editor (`projects` table → row → `design_json`
+     column), save it to a local file, run `services/vsdx` locally
+     (`cd services/vsdx && source .venv/bin/activate && uvicorn
+     app.main:app --reload`), and `curl -X POST
+     http://127.0.0.1:8000/export -H "Content-Type: application/json"
+     --data @that-file.json -o design.vsdx` — gets the *exact* stored
+     design, not a re-generation (LLM extraction isn't deterministic
+     across repeated calls with the same prose).
+4. **Design versioning** — the heaviest item: needs a schema change
+   (either a `project_versions` table with a FK back to `projects`, or
+   restructuring `projects.design_json` into an append-only history) plus
+   list/restore UI. Deliberately last — the other three are strictly
+   additive to what exists; this one changes the data model and is worth
+   scoping carefully on its own once (1)-(3) are live and re-tested.
+
+Also worth a decision alongside (1)-(2), not yet made: whether to improve
+`design-to-flow.ts`'s edge routing/layout to address "connections don't
+look all that great" (edges currently just draw straight lines with a
+basic grid layout, no smart routing to avoid the crossing/overlap the
+founder saw) — this wasn't literal BUILD_PLAN scope for Session 7-8 but
+is the most direct fix for that specific piece of feedback.
 
 **Vercel vs Railway vs Fly.io for `services/vsdx`** (asked about, not
 decided): founder chose to keep Railway for now, adjustable later.
