@@ -2,10 +2,19 @@
 
 import { useState, type ReactNode } from "react";
 import type { Design } from "@netdesign/schema";
+import { AssumptionsList } from "./AssumptionsList";
 import { DesignCanvas } from "./DesignCanvas";
+import { DeviceListTable } from "./DeviceListTable";
 import { IpPlanTable } from "./IpPlanTable";
 
-type Tab = "diagram" | "ip-plan";
+const TABS = [
+  { id: "diagram", label: "Diagram" },
+  { id: "ip-plan", label: "IP Plan" },
+  { id: "devices", label: "Device List" },
+  { id: "assumptions", label: "Assumptions" },
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -29,14 +38,16 @@ export function ProjectTabs({ design }: { design: Design }) {
   return (
     <div>
       <div className="mb-4 flex gap-2 border-b border-slate-200 dark:border-slate-700">
-        <TabButton active={tab === "diagram"} onClick={() => setTab("diagram")}>
-          Diagram
-        </TabButton>
-        <TabButton active={tab === "ip-plan"} onClick={() => setTab("ip-plan")}>
-          IP Plan
-        </TabButton>
+        {TABS.map(({ id, label }) => (
+          <TabButton key={id} active={tab === id} onClick={() => setTab(id)}>
+            {label}
+          </TabButton>
+        ))}
       </div>
-      {tab === "diagram" ? <DesignCanvas design={design} /> : <IpPlanTable design={design} />}
+      {tab === "diagram" && <DesignCanvas design={design} />}
+      {tab === "ip-plan" && <IpPlanTable design={design} />}
+      {tab === "devices" && <DeviceListTable design={design} />}
+      {tab === "assumptions" && <AssumptionsList design={design} />}
     </div>
   );
 }
