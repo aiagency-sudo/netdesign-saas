@@ -516,7 +516,11 @@ tests. Beyond snapshots, real rendered output was inspected by hand for
 both G1 and G4 before locking in the snapshots — HSRP priorities,
 virtual IP, default-route next-hop, and VLAN database all confirmed
 correct against what the design JSON actually allocated, not just "the
-template ran without crashing." **Not yet done**: wiring config-gen into
+template ran without crashing." **Founder reviewed the actual rendered
+cisco-ios output line-by-line (per CLAUDE.md's non-negotiable
+vendor-template review rule) and confirmed it's correct** — the first
+config-gen vendor is real-domain-expert-approved, not just test-passing.
+**Not yet done**: wiring config-gen into
 `apps/web` (a "Download configs" button, similar to `.vsdx`/HLD) —
 BUILD_PLAN Session 10 only asks for the package + its tests, not web
 integration; that's a natural follow-up, not yet built. One forward-
