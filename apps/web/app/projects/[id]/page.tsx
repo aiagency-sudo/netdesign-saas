@@ -41,6 +41,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             >
               Download .vsdx
             </a>
+            <a
+              href={`/api/projects/${project.id}/hld`}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-300"
+            >
+              Download HLD (.docx)
+            </a>
           </div>
         )}
       </div>
