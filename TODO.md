@@ -520,16 +520,38 @@ template ran without crashing." **Founder reviewed the actual rendered
 cisco-ios output line-by-line (per CLAUDE.md's non-negotiable
 vendor-template review rule) and confirmed it's correct** — the first
 config-gen vendor is real-domain-expert-approved, not just test-passing.
-**Not yet done**: wiring config-gen into
-`apps/web` (a "Download configs" button, similar to `.vsdx`/HLD) —
-BUILD_PLAN Session 10 only asks for the package + its tests, not web
-integration; that's a natural follow-up, not yet built. One forward-
-looking note if that happens: `packages/config-gen` loads its `.njk`
-templates from disk at a path relative to the compiled module, which
-works today (`pnpm run build`/`test`/the CLI script) but Vercel's
-serverless bundler may or may not trace/include a directory that's only
-read via a runtime `fs` call rather than `import`ed — worth confirming
-directly (not assuming) before shipping a route that depends on it.
+
+## Next step (config-gen web integration) — DONE
+
+Added the "Download configs" button (next to `.vsdx`/HLD) that TODO.md's
+Session 10 entry flagged as a natural follow-up: new `GET
+/api/projects/[id]/configs` calls `renderAllConfigs()` and returns every
+supported device's config concatenated into one `.txt`, each section
+delimited by a `! ===...` banner naming the device — no new dependency
+(a zip-per-device archive would need one; a single delimited file needs
+none, and is just as usable for copy-pasting into per-device consoles).
+Extracted the three download routes' identical `slugify()` into
+`lib/slugify.ts` — third copy-paste of the exact same function crossed
+into "actually share this" territory.
+
+**Confirmed a real deploy bug before it shipped, not after**: the
+forward-looking note left in the Session 10 entry above turned out to be
+a real problem, not a hypothetical. `packages/config-gen` loads its
+`.njk` files via a runtime `fs` read (`nunjucks.configure()`), which
+Next's build-time file tracer cannot see — checking the actual
+`.next/server/.../configs/route.js.nft.json` after a real build showed
+the template files were **not** included at all, which would have 404'd
+or 500'd in production on Vercel despite passing every local
+build/test/lint check. Fixed with `next.config.ts`'s
+`outputFileTracingIncludes`, scoped to just this one route
+(`/api/projects/\[id\]/configs` — the `[id]` segment must be
+glob-escaped, since unescaped square brackets are a glob character
+class, not a literal match; an unescaped key silently matches nothing,
+which is exactly how this almost shipped broken). Verified twice: with a
+deliberately over-broad `"**"` key first (to confirm the mechanism works
+under Turbopack at all), then with the real, correctly-scoped key
+(confirmed the templates appear in `configs`'s trace file and nowhere
+else's).
 
 ## Notes / decisions made without asking (boring-option calls)
 
