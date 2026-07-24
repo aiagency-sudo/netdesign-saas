@@ -292,15 +292,24 @@ draws devices + interface-labeled edges (Session 5-6's literal scope);
 segments/VLANs were explicitly out of scope until now. Directly informs
 Session 7-8 scoping below.
 
-## Next step (Session 7-8, per BUILD_PLAN.md verbatim)
+## Phase 1 (BUILD_PLAN Sessions 7-8) — CLOSED OUT
 
 > "Add the design detail view: interactive diagram + tabbed panels for IP
 > Plan (table from segments/links), Device List, and Assumptions. Add
 > Download .vsdx. Add design versioning: each regenerate saves a new
 > version row; list + restore."
 
-Scoped into four independent chunks, worked one at a time per the
-founder's explicit "step by step" instruction:
+All four items shipped and merged, worked one at a time per the
+founder's explicit "step by step" instruction. Confirmed live: the
+founder tried an out-of-scope prompt (a full core/distribution/access
+three-tier campus design with dual firewalls) via Regenerate — the
+system correctly recognized this doesn't match either supported pattern
+(`branch-office`/`smb-flat`) and recorded an honest assumption about the
+simplification instead of silently guessing wrong. Founder chose to hold
+off on building real campus/three-tier support (a real new
+`design-engine` composer + `designParamsSchema` pattern — schema already
+has the device roles, so it's collector/composer work, not schema work)
+and continue down BUILD_PLAN's literal path instead.
 
 1. **IP Plan tab** — DONE. `IpPlanTable.tsx` renders segments
    (VLAN/CIDR/gateway/purpose/DHCP), device addressing (mgmt IP,
@@ -355,12 +364,10 @@ founder's explicit "step by step" instruction:
      button per non-current row) and a `RegenerateForm.tsx` next to
      "Download .vsdx" on the project page (collapsed button that expands
      to a prompt textarea pre-filled with the current prompt).
-   - **Not yet verified**: the actual API routes end-to-end (needs a real
-     authenticated session against a real Supabase project with this
-     migration applied — not possible in this sandbox). Real test is
-     applying `0002_project_versions.sql` to the live project (SQL
-     Editor, same as `0001_init.sql` was), merging, and trying
-     Regenerate/Restore for real.
+   - **Confirmed live**: migration run against the real Supabase project;
+     Regenerate confirmed working (the campus-topology test above was
+     run via Regenerate on an existing project). Restore not explicitly
+     exercised yet, but shares the same code path/RLS model as Regenerate.
 
 Also worth a decision alongside (1)-(2), not yet made: whether to improve
 `design-to-flow.ts`'s edge routing/layout to address "connections don't
@@ -385,6 +392,50 @@ Leaning against proprietary Microsoft/Cisco stencils (licensing + the
 `Connect.create()` master-copying fragility already seen once), toward
 hand-built vendor-neutral vector icon shapes over embedded raster/SVG — but
 this is the founder's call, not decided.
+
+## Next step (BUILD_PLAN Session 9) — DONE
+
+> "Implement the HLD document generator: design JSON → structured markdown
+> (overview, assumptions, topology, IP plan, VLAN table, routing, security
+> zones) with docx export."
+
+New `packages/doc-gen` (6th workspace package), same deterministic/
+template-only discipline as `config-gen` will follow — never calls an
+LLM, only ever reads fields already present on a schema-valid `Design`.
+
+- `generateHldMarkdown(design): string` — all seven BUILD_PLAN sections
+  (VLAN table folded into IP Plan's Segments table rather than
+  duplicated as its own section, since segments already *are* the VLAN
+  table). Routing section only renders if `design.routing` is present;
+  Security Zones falls back to listing bare `device.zone` values (with a
+  note that no explicit policies exist) when `design.security` is empty,
+  which is every design today — nothing populates `security` yet.
+- `generateHldDocx(design): Promise<Buffer>` — same sections, built
+  directly as Word document elements (headings/paragraphs/tables) via
+  the pure-JS `docx` npm package, not by converting the markdown string
+  (no pandoc or similar binary available in a Vercel serverless
+  function, and markdown→docx conversion is its own can of worms with a
+  templated-string intermediate that a real converter would have to
+  parse back out — building both outputs independently from the same
+  `Design` sidesteps that entirely).
+- New `GET /api/projects/[id]/hld` (same RLS-scoped-by-owner pattern as
+  `/export`) and a "Download HLD (.docx)" button next to "Download
+  .vsdx" on the project page.
+- Snapshot + assertion tests against G1/G4 (re-declared fixtures, same
+  "don't depend on another package's test-only code" convention as
+  `scripts/generate-design.ts`).
+
+**Verified**: `pnpm run build`/`test`/`lint` all green (94 TS tests
+total across 5 packages). For the `.docx` output specifically — since a
+binary buffer isn't meaningfully snapshot-testable — wrote a real file
+to disk and confirmed with `python3 zipfile` that it's a genuine OOXML
+package (`word/document.xml`, `[Content_Types].xml` present) whose
+`word/document.xml` actually contains the expected device IDs and
+section headings, not just "starts with the right magic bytes." Not yet
+verified: the `/api/projects/[id]/hld` route end-to-end against the live
+deployed app (same sandbox limitation as every other authenticated route
+in this repo) — real test is clicking "Download HLD (.docx)" on a real
+project once this is merged.
 
 ## Notes / decisions made without asking (boring-option calls)
 

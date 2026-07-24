@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@netdesign/design-engine": "workspace:*",
+    "@netdesign/doc-gen": "workspace:*",
     "@netdesign/llm-extraction": "workspace:*",
     "@netdesign/schema": "workspace:*",
     "@supabase/ssr": "^0.12.3",
