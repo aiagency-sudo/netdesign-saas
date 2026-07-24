@@ -7,6 +7,7 @@ import {
 } from "@netdesign/llm-extraction";
 import { DesignValidationError } from "@netdesign/schema";
 import { createClient } from "@/lib/supabase/server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const requestSchema = z.object({
   prompt: z.string().min(1, "Describe the network you need."),
@@ -65,6 +66,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    const posthog = getPostHogClient();
+    if (posthog) {
+      posthog.capture({
+        distinctId: user.id,
+        event: "design_regenerated",
+        properties: {
+          project_id: id,
+          version_id: version.id,
+          design_name: design.meta.name,
+          device_count: design.devices?.length ?? 0,
+        },
+      });
+      await posthog.flush();
     }
 
     return NextResponse.json({ versionId: version.id, design });

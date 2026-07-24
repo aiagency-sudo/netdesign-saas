@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import posthog from "posthog-js";
 
 export function RegenerateForm({ projectId, initialPrompt }: { projectId: string; initialPrompt: string }) {
   const router = useRouter();
@@ -14,6 +15,11 @@ export function RegenerateForm({ projectId, initialPrompt }: { projectId: string
     event.preventDefault();
     setStatus("generating");
     setError(null);
+
+    posthog.capture("design_regeneration_started", {
+      project_id: projectId,
+      prompt_length: prompt.length,
+    });
 
     const response = await fetch(`/api/projects/${projectId}/regenerate`, {
       method: "POST",

@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
+import posthog from "posthog-js";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -24,6 +25,8 @@ export default function LoginPage() {
       setError(signInError.message);
       return;
     }
+
+    posthog.capture("magic_link_requested");
     setStatus("sent");
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slugify";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -48,6 +49,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const bytes = await vsdxResponse.arrayBuffer();
+
+  const posthog = getPostHogClient();
+  if (posthog) {
+    posthog.capture({ distinctId: user.id, event: "vsdx_exported", properties: { project_id: id } });
+    await posthog.flush();
+  }
 
   return new NextResponse(bytes, {
     headers: {

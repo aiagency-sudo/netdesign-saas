@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 /** Makes an older version the project's current one — does not delete or mutate any version row, just repoints projects.design_json/current_version_id. */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string; versionId: string }> }) {
@@ -36,6 +37,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  const posthog = getPostHogClient();
+  if (posthog) {
+    posthog.capture({
+      distinctId: user.id,
+      event: "version_restored",
+      properties: { project_id: id, version_id: versionId },
+    });
+    await posthog.flush();
   }
 
   return NextResponse.json({ ok: true });

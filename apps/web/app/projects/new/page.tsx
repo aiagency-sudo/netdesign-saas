@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import posthog from "posthog-js";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -13,6 +14,10 @@ export default function NewProjectPage() {
     event.preventDefault();
     setStatus("generating");
     setError(null);
+
+    posthog.capture("design_generation_started", {
+      prompt_length: prompt.length,
+    });
 
     const response = await fetch("/api/generate", {
       method: "POST",
