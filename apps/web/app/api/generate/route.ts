@@ -7,6 +7,7 @@ import {
 } from "@netdesign/llm-extraction";
 import { DesignValidationError } from "@netdesign/schema";
 import { createClient } from "@/lib/supabase/server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const requestSchema = z.object({
   prompt: z.string().min(1, "Describe the network you need."),
@@ -61,9 +62,32 @@ export async function POST(request: Request) {
       await supabase.from("projects").update({ current_version_id: version.id }).eq("id", project.id);
     }
 
+    const posthog = getPostHogClient();
+    if (posthog) {
+      posthog.capture({
+        distinctId: user.id,
+        event: "design_generated",
+        properties: {
+          project_id: project.id,
+          design_name: design.meta.name,
+          device_count: design.devices?.length ?? 0,
+        },
+      });
+      await posthog.flush();
+    }
+
     return NextResponse.json({ projectId: project.id, design });
   } catch (err) {
     if (err instanceof DesignParamsExtractionError || err instanceof DesignValidationError) {
+      const posthog = getPostHogClient();
+      if (posthog) {
+        posthog.capture({
+          distinctId: user.id,
+          event: "design_generation_failed",
+          properties: { error_type: err instanceof DesignParamsExtractionError ? "extraction" : "validation" },
+        });
+        await posthog.flush();
+      }
       return NextResponse.json({ error: err.message }, { status: 422 });
     }
     console.error(err);

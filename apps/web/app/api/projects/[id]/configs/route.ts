@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { renderAllConfigs } from "@netdesign/config-gen";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slugify";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const SECTION_RULE = "!".padEnd(60, "=");
 
@@ -42,6 +43,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const combined = deviceIds
     .map((deviceId) => `${SECTION_RULE}\n! Device: ${deviceId}\n${SECTION_RULE}\n\n${configs[deviceId]}`)
     .join("\n\n");
+
+  const posthog = getPostHogClient();
+  if (posthog) {
+    posthog.capture({
+      distinctId: user.id,
+      event: "config_downloaded",
+      properties: { project_id: id, device_count: deviceIds.length },
+    });
+    await posthog.flush();
+  }
 
   return new NextResponse(combined, {
     headers: {
