@@ -707,6 +707,81 @@ entirely an `apps/web` + Supabase migration concern.
 in passing during item 1's session (22 tests green); nothing further to
 do there before the PostHog pause ahead of item 3.
 
+## Next step (BUILD_PLAN Session 11-12, item 3: PostHog analytics) — DONE
+
+Founder set up a PostHog account and used its GitHub-linked wizard
+("PostHog Code") to auto-generate the integration rather than have me
+build it from scratch — PR #12, `posthog[bot]`. Reviewed the PR before
+merge (not rubber-stamped): read the full diff, then actually ran the
+branch in a throwaway git worktree (real `pnpm install` + `next build` +
+a live `next dev` server hit with headless Chromium, plus a local
+Postgres-style empirical check where relevant) rather than reasoning
+about it in the abstract. Found three real, confirmed-not-guessed bugs
+before merge and pushed fixes directly onto the PR's branch
+(`posthog/instrumentation-ec9f5f`, commit `a4b7ee7`):
+
+1. **Analytics silently dead for anyone not yet signed in.** The
+   pre-existing auth gate (`apps/web/proxy.ts` matcher +
+   `lib/supabase/middleware.ts`'s `PUBLIC_PATHS`) redirects any
+   unauthenticated request to `/login` unless explicitly exempted. The
+   PR added `/ingest/*` rewrites for PostHog but never exempted that
+   path — confirmed via `curl` that `/ingest/decide` came back as a 307
+   to `/login` instead of being proxied. This broke PostHog's own
+   bootstrap call and the login page's `magic_link_requested` event for
+   every anonymous visitor, i.e. the entire top of the "Sign-in to first
+   design" funnel. Fixed by excluding `ingest` in `proxy.ts`'s matcher.
+2. **Client and server events used two different identities.** Server
+   routes captured with `distinctId: user.id` (the real Supabase UUID);
+   client-side captures (`login/page.tsx`, `projects/new/page.tsx`,
+   `RegenerateForm.tsx`) never called `posthog.identify()`, so they
+   stayed on the browser's anonymous id forever. That splits both the
+   "Design generation funnel" and "Sign-in to first design" funnel
+   across two unrelated person profiles — exactly the two insights the
+   PR's own dashboard highlights. Fixed with a new
+   `components/PostHogIdentify.tsx` (client component, mounted once in
+   `app/layout.tsx`) that identifies the browser as `user.id` as soon as
+   a Supabase session is found.
+3. **Local dev broke on every page load without the new env vars.**
+   `instrumentation-client.ts` threw at module load whenever
+   `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` was unset outside production —
+   confirmed via a headless-Chromium hit against a real `next dev`
+   server (uncaught page error, not just a lint-level guess). Since
+   `.env.example` was never updated with the two new vars either, this
+   would've broken `pnpm dev` for any fresh clone until someone
+   discovered and set two undocumented variables — a direct hit against
+   this project's "leave the repo green" session-resumability rule.
+   Downgraded to `console.warn` and documented both vars as optional in
+   `.env.example`.
+
+Also set `disable_session_recording: true` explicitly: none of the PR's
+6 dashboards/insights use session replay, and this app's post-generation
+pages render real customer network data (IP plans, device lists, real
+topology) as plain DOM content that posthog-js's default input-masking
+(`maskAllInputs: true`, verified by reading the bundled source) wouldn't
+cover if replay were ever turned on at the project level later without
+this context.
+
+Founder set the two Vercel env vars, marked the PR ready for review, and
+merged it (#12, merged into `main`). Rebased this branch onto the new
+`main` afterward — the PostHog PR touched the same 4 files as items 1/2
+above (`generate/route.ts`, `regenerate/route.ts`, `projects/new/page.tsx`,
+`RegenerateForm.tsx`); the rebase resolved automatically with no
+conflicts. Full monorepo build/test/lint re-verified green on the
+combined result post-rebase.
+
+**Not yet verified**: real events actually landing in the PostHog
+Activity view / dashboard populating post-deploy — that's on the founder
+to confirm by clicking through the live app once Vercel's redeploy with
+the new env vars is live.
+
+This closes out all four Session 11-12 hardening items (1 clarifying
+questions, 2 rate limiting, 3 PostHog, 4 golden suite re-confirmed).
+**Still not merged**: this branch itself (items 1+2, clarifying
+questions + rate limiting) has no PR yet — founder hasn't asked for one.
+Also still outstanding from item 2: the founder needs to run
+`supabase/migrations/0003_generation_rate_limit.sql` against the
+production Supabase project.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
