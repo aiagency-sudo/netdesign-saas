@@ -312,30 +312,55 @@ founder's explicit "step by step" instruction:
    (`meta.intentSummary`, `meta.assumptions[]`, `meta.warnings[]` when
    present). `ProjectTabs.tsx` now drives all four tabs
    (Diagram/IP Plan/Device List/Assumptions) off one `TABS` array.
-3. **Download .vsdx** — code side DONE:
-   `GET /api/projects/[id]/export` loads a project's `design_json`
-   (RLS-scoped to its owner via the normal authenticated Supabase
-   client), POSTs it to `VSDX_SERVICE_URL`'s `/export`, and streams the
-   `.vsdx` bytes back with the right content-type/filename headers; a
-   plain anchor tag on the project page triggers the browser's native
-   download (no client JS needed). Verified the fetch-to-vsdx-service
-   call directly against a local `services/vsdx` instance (200,
-   `application/vnd.ms-visio.drawing`, real bytes) — same request shape
-   `scripts/generate-design.ts` already proves works. **Not yet verified
-   through the actual route handler end-to-end** (needs a real
-   authenticated session + a deployed vsdx instance, neither available in
-   this sandbox) — real test is once Railway's live.
-   **External step still needed (founder, not yet done)**: deploy
-   `services/vsdx` to Railway (repo-side config already exists:
-   `services/vsdx/railway.json` — new Railway project, Root Directory
-   `services/vsdx`), then add `VSDX_SERVICE_URL` (the Railway URL) to
-   Vercel's env vars and redeploy.
-4. **Design versioning** — not started. The heaviest item: needs a schema change
-   (either a `project_versions` table with a FK back to `projects`, or
-   restructuring `projects.design_json` into an append-only history) plus
-   list/restore UI. Deliberately last — the other three are strictly
-   additive to what exists; this one changes the data model and is worth
-   scoping carefully on its own once (1)-(3) are live and re-tested.
+3. **Download .vsdx** — DONE and confirmed live. Deployed `services/vsdx`
+   to Railway (founder self-served through a Root-Directory hiccup — the
+   service initially auto-detected and built `apps/web` instead until
+   Root Directory was set to `services/vsdx`), added `VSDX_SERVICE_URL` to
+   Vercel, and the "Download .vsdx" button on a real project produced a
+   real `.vsdx` file. Founder correctly noted the downloaded file only has
+   the diagram, not IP Plan/Device List/Assumptions content — confirmed
+   as expected (`.vsdx` = topology only, always was scoped that way; a
+   future HLD/LLD `.docx` document, BUILD_PLAN Session 9, is the right
+   place for tabular/text content, not the Visio file).
+4. **Design versioning** — DONE (code side; not yet run against the real
+   Supabase project). `supabase/migrations/0002_project_versions.sql`
+   adds an append-only `project_versions` table (`project_id`,
+   `design_json`, `prompt`, `created_at`) plus `projects.current_version_id`
+   — `projects.design_json`/`prompt` stay a denormalized copy of whichever
+   version is current, so every existing read site (`DesignCanvas`,
+   `IpPlanTable`, the export route) needed zero changes. RLS on
+   `project_versions` checks ownership via a join back to
+   `projects.owner_id` (no `owner_id` column on the versions table
+   itself). Since real projects already exist in production, the
+   migration **backfills** every existing project's `design_json` as its
+   version 1 and sets `current_version_id` accordingly — verified for
+   real: installed a local Postgres 16 in this sandbox, stubbed a minimal
+   `auth.users`/`auth.uid()`, ran `0001_init.sql` then seeded one project
+   with a design and one without (mimicking a design mid-generation),
+   ran `0002_project_versions.sql`, and confirmed by query: the
+   with-design project got exactly one version row with matching prompt
+   and a correctly-set `current_version_id`; the without-design project
+   was safely skipped (no crash, no bogus empty version). Also confirmed
+   the actual data-mutating statements are idempotent (re-running inserted
+   zero further rows) — the `CREATE POLICY` statements aren't (expected;
+   migrations run once, not replayed).
+   - New `POST /api/projects/[id]/regenerate` — re-runs the pipeline for
+     an *existing* project (there was previously no way to regenerate one
+     at all; every generate created a new project) and appends a new
+     version rather than overwriting history.
+   - New `POST /api/projects/[id]/versions/[versionId]/restore` — repoints
+     `projects.design_json`/`current_version_id` at an older version;
+     never mutates or deletes version rows.
+   - New UI: a "Versions" tab (`VersionHistory.tsx`, list + restore
+     button per non-current row) and a `RegenerateForm.tsx` next to
+     "Download .vsdx" on the project page (collapsed button that expands
+     to a prompt textarea pre-filled with the current prompt).
+   - **Not yet verified**: the actual API routes end-to-end (needs a real
+     authenticated session against a real Supabase project with this
+     migration applied — not possible in this sandbox). Real test is
+     applying `0002_project_versions.sql` to the live project (SQL
+     Editor, same as `0001_init.sql` was), merging, and trying
+     Regenerate/Restore for real.
 
 Also worth a decision alongside (1)-(2), not yet made: whether to improve
 `design-to-flow.ts`'s edge routing/layout to address "connections don't

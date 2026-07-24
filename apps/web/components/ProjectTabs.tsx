@@ -6,12 +6,14 @@ import { AssumptionsList } from "./AssumptionsList";
 import { DesignCanvas } from "./DesignCanvas";
 import { DeviceListTable } from "./DeviceListTable";
 import { IpPlanTable } from "./IpPlanTable";
+import { VersionHistory, type VersionSummary } from "./VersionHistory";
 
 const TABS = [
   { id: "diagram", label: "Diagram" },
   { id: "ip-plan", label: "IP Plan" },
   { id: "devices", label: "Device List" },
   { id: "assumptions", label: "Assumptions" },
+  { id: "versions", label: "Versions" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -32,7 +34,17 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-export function ProjectTabs({ design }: { design: Design }) {
+export function ProjectTabs({
+  projectId,
+  design,
+  versions,
+  currentVersionId,
+}: {
+  projectId: string;
+  design: Design;
+  versions: VersionSummary[];
+  currentVersionId: string | null;
+}) {
   const [tab, setTab] = useState<Tab>("diagram");
 
   return (
@@ -48,6 +60,9 @@ export function ProjectTabs({ design }: { design: Design }) {
       {tab === "ip-plan" && <IpPlanTable design={design} />}
       {tab === "devices" && <DeviceListTable design={design} />}
       {tab === "assumptions" && <AssumptionsList design={design} />}
+      {tab === "versions" && (
+        <VersionHistory projectId={projectId} versions={versions} currentVersionId={currentVersionId} />
+      )}
     </div>
   );
 }

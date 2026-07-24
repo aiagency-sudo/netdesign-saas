@@ -12,7 +12,9 @@ const requestSchema = z.object({
   prompt: z.string().min(1, "Describe the network you need."),
 });
 
-export async function POST(request: Request) {
+/** Re-runs the pipeline for an existing project and appends the result as a new version, rather than creating a new project. */
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,36 +34,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsedBody.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
   }
 
+  const { data: existingProject } = await supabase.from("projects").select("id").eq("id", id).single();
+  if (!existingProject) {
+    return NextResponse.json({ error: "Project not found." }, { status: 404 });
+  }
+
   try {
     const client = createAnthropicExtractionClient();
     const design = await generateBranchOfficeDesign(parsedBody.data.prompt, { client });
 
-    const { data: project, error } = await supabase
-      .from("projects")
-      .insert({ owner_id: user.id, name: design.meta.name, prompt: parsedBody.data.prompt, design_json: design })
-      .select("id")
-      .single();
-
-    if (error || !project) {
-      return NextResponse.json({ error: error?.message ?? "Could not save the project." }, { status: 500 });
-    }
-
-    // Every project's history starts with itself as version 1. Not
-    // transactional with the insert above — an interruption here leaves the
-    // project without a version row/current_version_id, which is a minor
-    // history gap, not a broken project (design_json above already has the
-    // design; the page renders off that regardless of versioning state).
-    const { data: version } = await supabase
+    const { data: version, error: versionError } = await supabase
       .from("project_versions")
-      .insert({ project_id: project.id, design_json: design, prompt: parsedBody.data.prompt })
+      .insert({ project_id: id, design_json: design, prompt: parsedBody.data.prompt })
       .select("id")
       .single();
 
-    if (version) {
-      await supabase.from("projects").update({ current_version_id: version.id }).eq("id", project.id);
+    if (versionError || !version) {
+      return NextResponse.json({ error: versionError?.message ?? "Could not save the new version." }, { status: 500 });
     }
 
-    return NextResponse.json({ projectId: project.id, design });
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({
+        name: design.meta.name,
+        prompt: parsedBody.data.prompt,
+        design_json: design,
+        current_version_id: version.id,
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ versionId: version.id, design });
   } catch (err) {
     if (err instanceof DesignParamsExtractionError || err instanceof DesignValidationError) {
       return NextResponse.json({ error: err.message }, { status: 422 });

@@ -1,9 +1,10 @@
 import type { Design } from "@netdesign/schema";
 
 /**
- * Hand-maintained mirror of supabase/migrations/0001_init.sql. Kept minimal
- * (one table) deliberately — see BUILD_PLAN Sessions 7-8 for versioning,
- * which is explicitly out of scope right now.
+ * Hand-maintained mirror of supabase/migrations/0001_init.sql +
+ * 0002_project_versions.sql. projects.design_json/prompt stay a denormalized
+ * copy of whichever project_versions row is "current" (current_version_id) —
+ * see 0002_project_versions.sql for why.
  */
 export interface Database {
   public: {
@@ -15,6 +16,7 @@ export interface Database {
           name: string;
           prompt: string;
           design_json: Design | null;
+          current_version_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -24,10 +26,29 @@ export interface Database {
           name: string;
           prompt: string;
           design_json?: Design | null;
+          current_version_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["projects"]["Insert"]>;
+        Relationships: [];
+      };
+      project_versions: {
+        Row: {
+          id: string;
+          project_id: string;
+          design_json: Design;
+          prompt: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          design_json: Design;
+          prompt: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["project_versions"]["Insert"]>;
         Relationships: [];
       };
     };
