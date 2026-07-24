@@ -10,11 +10,13 @@ export function RegenerateForm({ projectId, initialPrompt }: { projectId: string
   const [prompt, setPrompt] = useState(initialPrompt);
   const [status, setStatus] = useState<"idle" | "generating" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<string[] | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("generating");
     setError(null);
+    setQuestions(null);
 
     posthog.capture("design_regeneration_started", {
       project_id: projectId,
@@ -28,9 +30,17 @@ export function RegenerateForm({ projectId, initialPrompt }: { projectId: string
     });
 
     if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        needsClarification?: boolean;
+        questions?: string[];
+      } | null;
       setStatus("error");
-      setError(body?.error ?? "Something went wrong.");
+      if (body?.needsClarification && body.questions) {
+        setQuestions(body.questions);
+      } else {
+        setError(body?.error ?? "Something went wrong.");
+      }
       return;
     }
 
@@ -77,6 +87,17 @@ export function RegenerateForm({ projectId, initialPrompt }: { projectId: string
         </button>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {questions && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="mb-1 font-medium">Before regenerating, could you clarify:</p>
+          <ul className="list-inside list-disc">
+            {questions.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-amber-700">Add these details above and try again.</p>
+        </div>
+      )}
     </form>
   );
 }

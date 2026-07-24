@@ -553,6 +553,91 @@ under Turbopack at all), then with the real, correctly-scoped key
 (confirmed the templates appear in `configs`'s trace file and nowhere
 else's).
 
+## Next step (BUILD_PLAN Session 11-12, item 1: clarifying-question error handling) — DONE
+
+Founder approved this order for hardening: (1) clarifying questions →
+(2) rate limiting → (4) confirm G1/G4 golden suite → pause for founder to
+set up a PostHog account before (3) analytics. This entry covers item 1
+(items 2 and 4 to follow in later sessions; item 3 is blocked on the
+founder's PostHog account).
+
+**The gap**: `extractDesignParams()` forced Claude to call
+`emit_design_params` via `toolChoice: {type: "tool", name: TOOL_NAME}` —
+architecturally, Claude could never decline or ask a question. This is
+why the earlier campus/three-tier test prompt got silently mapped onto
+`branch-office` with the gap recorded as an "assumption" instead of the
+system asking what the founder actually wanted — correct behavior for
+prompts close enough to guess, but a bad default for prompts that aren't
+close to either supported pattern at all.
+
+**Fix, in `packages/llm-extraction`**:
+- `src/prompt.ts`: added a second tool, `ask_clarifying_questions`
+  (`{questions: string[]}`, 1-3 items, schema derived from a new
+  `clarifyingQuestionsSchema` zod schema via the same `zodToJsonSchema()`
+  pattern already used for `emit_design_params`). Added `zod` as a direct
+  dependency (was only available transitively through `@netdesign/schema`
+  before — now imported directly, so it belongs in `package.json`).
+  Rewrote `SYSTEM_PROMPT` to tell Claude to prefer emitting design-params
+  (simplify/guess, record the gap in "assumptions") and only reach for
+  the clarify tool when a fact would have to be fabricated outright, not
+  simplified — e.g. a topology that doesn't resemble either flat pattern
+  at all, or no usable signal on router/switch counts whatsoever.
+- `src/client.ts`: `toolChoice` type widened to
+  `{type: "tool", name: string} | {type: "any"}` — deliberately not
+  `{type: "auto"}`, since a plain-text-only response is never an
+  acceptable outcome; some tool call is still forced, just not a specific
+  one.
+- `src/extract.ts`: `extractDesignParams()` now offers both tools with
+  `toolChoice: {type: "any"}`. New `NeedsClarificationError extends Error`
+  (carries `questions: string[]`), thrown by `parseExtractionResponse()`
+  when the response's `tool_use` block names the clarify tool instead of
+  `emit_design_params` — same established pattern as the existing
+  `DesignParamsExtractionError`, not a return-type change, so it stays a
+  minimal diff against the current call sites.
+- `generate.ts` needed no changes — it just calls `extractDesignParams()`
+  then `composeBranchOfficeDesign()`, so the new error propagates through
+  for free.
+- Tests: `prompt.test.ts` (+2), `extract.test.ts` (+3, including
+  `extractDesignParams()` propagating `NeedsClarificationError` end to
+  end), updated the existing "forces the tool" test to assert
+  `{type: "any"}` and both tools offered instead. All 18
+  `llm-extraction` tests pass.
+
+**Wired into `apps/web`**: both `app/api/generate/route.ts` and
+`app/api/projects/[id]/regenerate/route.ts` gained a
+`NeedsClarificationError` catch branch returning
+`{needsClarification: true, questions: [...]}` at 422 (checked before the
+existing `DesignParamsExtractionError`/`DesignValidationError` branch,
+since `NeedsClarificationError` doesn't extend either). `NewProjectPage`
+and `RegenerateForm` both now check for `needsClarification` in the error
+response and render the returned questions in an amber callout instead of
+the generic red error text, with a prompt to add the missing detail and
+resubmit — no new Q&A flow (the user just edits their prose), since a
+structured back-and-forth wasn't asked for and the existing regenerate/
+retry loop already covers "try again with more detail."
+
+**Not yet manually tested against the real Claude API** (only via the
+fake-client unit tests) — same sandbox limitation as prior sessions;
+this needs a real ambiguous prompt (e.g. the earlier campus/three-tier
+one) tried against the deployed app to confirm Claude actually reaches
+for the new tool rather than continuing to guess. Founder should try that
+once this is live.
+
+**Item 4 (confirm golden suite) also done in passing**: full
+`pnpm test:golden` run (build + `test/golden` in `design-engine`) is
+green — 22 tests across G1 and G4. Only G1/G4 composers exist; G2/G3/G5
+were flagged to the founder as scoping gaps before this session started
+and are not being fabricated here.
+
+Full monorepo `pnpm run build`, `pnpm -r run test`, `pnpm run lint`, and
+`pnpm run test:golden` all green before this commit.
+
+**Next**: item 2 (rate limiting) — planned to use Supabase (a table +
+row-count/timestamp check, or a Postgres function) rather than a new
+external service like Upstash, to avoid requiring the founder to set up
+another account. Then pause for the founder's PostHog account before
+item 3.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own

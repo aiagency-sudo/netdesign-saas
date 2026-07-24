@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SYSTEM_PROMPT, TOOL_NAME, toolInputSchema } from "../src/prompt.js";
+import { CLARIFY_TOOL_NAME, SYSTEM_PROMPT, TOOL_NAME, clarifyToolInputSchema, toolInputSchema } from "../src/prompt.js";
 
 describe("extraction prompt", () => {
   it("embeds exactly 3 few-shot examples", () => {
@@ -9,6 +9,22 @@ describe("extraction prompt", () => {
 
   it("mentions the tool name so the model knows what to call", () => {
     expect(SYSTEM_PROMPT).toContain(TOOL_NAME);
+  });
+
+  it("mentions the clarifying-questions tool and when to prefer it", () => {
+    expect(SYSTEM_PROMPT).toContain(CLARIFY_TOOL_NAME);
+  });
+
+  it("derives the clarify tool input schema from clarifyingQuestionsSchema (array of 1-3 strings)", () => {
+    expect(clarifyToolInputSchema["type"]).toBe("object");
+    expect(clarifyToolInputSchema).not.toHaveProperty("$schema");
+    const properties = clarifyToolInputSchema["properties"] as Record<
+      string,
+      { type?: string; minItems?: number; maxItems?: number }
+    >;
+    expect(properties["questions"]!.type).toBe("array");
+    expect(properties["questions"]!.minItems).toBe(1);
+    expect(properties["questions"]!.maxItems).toBe(3);
   });
 
   it("derives the tool input schema from designParamsSchema (object, with required fields, no $schema wrapper)", () => {

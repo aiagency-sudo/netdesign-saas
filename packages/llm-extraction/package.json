@@ -20,6 +20,7 @@
     "@anthropic-ai/sdk": "^0.32.1",
     "@netdesign/design-engine": "workspace:*",
     "@netdesign/schema": "workspace:*",
+    "zod": "^3.23.8",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {

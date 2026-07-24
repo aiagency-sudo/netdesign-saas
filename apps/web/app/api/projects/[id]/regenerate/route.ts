@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   DesignParamsExtractionError,
+  NeedsClarificationError,
   createAnthropicExtractionClient,
   generateBranchOfficeDesign,
 } from "@netdesign/llm-extraction";
@@ -85,6 +86,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ versionId: version.id, design });
   } catch (err) {
+    if (err instanceof NeedsClarificationError) {
+      return NextResponse.json({ needsClarification: true, questions: err.questions }, { status: 422 });
+    }
     if (err instanceof DesignParamsExtractionError || err instanceof DesignValidationError) {
       return NextResponse.json({ error: err.message }, { status: 422 });
     }

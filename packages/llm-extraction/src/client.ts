@@ -10,7 +10,7 @@ export interface ExtractionMessageParams {
   system: string;
   messages: Array<{ role: "user"; content: string }>;
   tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
-  toolChoice: { type: "tool"; name: string };
+  toolChoice: { type: "tool"; name: string } | { type: "any" };
   maxTokens: number;
 }
 

@@ -9,11 +9,13 @@ export default function NewProjectPage() {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<"idle" | "generating" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<string[] | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("generating");
     setError(null);
+    setQuestions(null);
 
     posthog.capture("design_generation_started", {
       prompt_length: prompt.length,
@@ -24,11 +26,20 @@ export default function NewProjectPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
-    const body = (await response.json()) as { projectId?: string; error?: string };
+    const body = (await response.json()) as {
+      projectId?: string;
+      error?: string;
+      needsClarification?: boolean;
+      questions?: string[];
+    };
 
     if (!response.ok || !body.projectId) {
       setStatus("error");
-      setError(body.error ?? "Something went wrong.");
+      if (body.needsClarification && body.questions) {
+        setQuestions(body.questions);
+      } else {
+        setError(body.error ?? "Something went wrong.");
+      }
       return;
     }
 
@@ -59,6 +70,17 @@ export default function NewProjectPage() {
           {status === "generating" ? "Generating design..." : "Generate design"}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {questions && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="mb-1 font-medium">Before generating, could you clarify:</p>
+            <ul className="list-inside list-disc">
+              {questions.map((question) => (
+                <li key={question}>{question}</li>
+              ))}
+            </ul>
+            <p className="mt-1 text-amber-700">Add these details to the description above and try again.</p>
+          </div>
+        )}
       </form>
     </main>
   );
