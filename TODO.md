@@ -638,6 +638,75 @@ external service like Upstash, to avoid requiring the founder to set up
 another account. Then pause for the founder's PostHog account before
 item 3.
 
+## Next step (BUILD_PLAN Session 11-12, item 2: rate limiting) — DONE
+
+Continues the approved hardening order (item 1 clarifying questions →
+item 2 rate limiting → item 4 confirm golden suite → pause for founder's
+PostHog account before item 3).
+
+**Why Supabase, not Upstash/Redis**: rate limiting only needs to stop a
+signed-in user from burning Claude API spend in a tight loop — it's not
+high-throughput enough to need a dedicated store, and adding Upstash
+would mean the founder setting up yet another account/env var for a
+problem Postgres already solves. Chose an append-only events table over
+a per-user counter column: a counter needs separate increment/reset/decay
+logic to get the rolling window right; a table just needs "count rows
+newer than `now() - interval`," and it doubles as an audit trail for
+free.
+
+**`supabase/migrations/0003_generation_rate_limit.sql`**: new
+`generation_events (id, owner_id, created_at)` table, RLS scoped to
+`auth.uid() = owner_id` (same pattern as `projects`, not the join-through
+pattern `project_versions` needed, since this table has its own owner
+column). Empirically verified against a local Postgres 16 instance
+(stood up, then torn down, same as the 0002 migration's verification):
+seeded a stub `auth.uid()` function reading a session GUC, confirmed (a)
+a user can insert their own event, (b) inserting an event with someone
+else's `owner_id` is rejected by RLS, and (c) the rolling-window count
+query correctly scopes to one user's own rows and correctly excludes a
+row seeded 2 hours in the past when filtering `created_at >= now() -
+interval '1 hour'`.
+
+**`apps/web/lib/rate-limit.ts`** (new): `checkGenerationRateLimit(supabase,
+ownerId)` counts the user's `generation_events` in the last hour via
+`.select("id", {count: "exact", head: true})` (no rows fetched, just the
+count) and compares against `GENERATION_RATE_LIMIT_PER_HOUR` (env var,
+default 20 — a flat abuse ceiling, not a paid-plan quota, since there are
+no billing tiers yet and CLAUDE.md says not to touch Stripe without
+founder review). `recordGenerationEvent(supabase, ownerId)` inserts one
+row. Both take the same `SupabaseClient<Database>` already constructed by
+each route's `createClient()`, no new client/connection.
+
+**Wired into both generation entry points**: `app/api/generate/route.ts`
+and `app/api/projects/[id]/regenerate/route.ts` each call
+`checkGenerationRateLimit()` after parsing the request body (no point
+rate-limiting a request that's going to 400 anyway) and before the
+`try` block, returning 429 with a plain-English message if over the
+limit. Inside the `try`, `recordGenerationEvent()` is called *before* the
+Claude API call — a failed extraction still spent Claude API tokens, so
+it still counts against the hour, not just successful generations.
+
+`apps/web/lib/supabase/types.ts` gained the `generation_events` table
+shape, hand-mirrored from the migration like the other two tables.
+
+**Not yet manually verified against the deployed app** (same sandbox
+limitation noted for item 1) — needs the founder to run
+`0003_generation_rate_limit.sql` against the real Supabase project (same
+"paste into the SQL editor" step as `0002_project_versions.sql` before
+it), then optionally try generating >20 times in an hour to see the 429.
+Default of 20/hour is a guess or a boring-option call — the founder may
+want to tune `GENERATION_RATE_LIMIT_PER_HOUR` in Vercel once they see
+real usage.
+
+Full monorepo `pnpm run build`, `pnpm run typecheck`, `pnpm -r run
+test`, and `pnpm run lint` all green before this commit. No changes
+needed in `packages/llm-extraction` or any other package — this is
+entirely an `apps/web` + Supabase migration concern.
+
+**Next**: item 4 (re-confirm G1/G4 golden suite) was already re-verified
+in passing during item 1's session (22 tests green); nothing further to
+do there before the PostHog pause ahead of item 3.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
