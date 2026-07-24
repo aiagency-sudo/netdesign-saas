@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateHldDocx } from "@netdesign/doc-gen";
 import { createClient } from "@/lib/supabase/server";
+import { slugify } from "@/lib/slugify";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,13 +32,4 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       "Content-Disposition": `attachment; filename="${slugify(project.name)}-hld.docx"`,
     },
   });
-}
-
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "design"
-  );
 }
