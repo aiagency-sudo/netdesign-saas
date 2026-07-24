@@ -20,6 +20,20 @@ exports[`golden G1 branch-office — full design composition > matches the recor
           ],
           "description": "Access trunk to sw-01",
           "name": "eth0/1",
+          "svis": [
+            {
+              "ip": "10.30.2.2/24",
+              "vlanId": 10,
+            },
+            {
+              "ip": "10.30.3.2/24",
+              "vlanId": 20,
+            },
+            {
+              "ip": "10.30.4.2/24",
+              "vlanId": 30,
+            },
+          ],
           "trunk": true,
         },
       ],
@@ -46,6 +60,20 @@ exports[`golden G1 branch-office — full design composition > matches the recor
           ],
           "description": "Access trunk to sw-02",
           "name": "eth0/1",
+          "svis": [
+            {
+              "ip": "10.30.2.3/24",
+              "vlanId": 10,
+            },
+            {
+              "ip": "10.30.3.3/24",
+              "vlanId": 20,
+            },
+            {
+              "ip": "10.30.4.3/24",
+              "vlanId": 30,
+            },
+          ],
           "trunk": true,
         },
       ],

@@ -45,6 +45,18 @@
                 "vlan": { "type": "integer" },
                 "trunk": { "type": "boolean" },
                 "allowedVlans": { "type": "array", "items": { "type": "integer" } },
+                "svis": {
+                  "type": "array",
+                  "description": "Per-VLAN L3 addresses on this trunk, only on L3-capable devices (e.g. a router-on-a-stick) — an access switch's trunk has none.",
+                  "items": {
+                    "type": "object",
+                    "required": ["vlanId", "ip"],
+                    "properties": {
+                      "vlanId": { "type": "integer" },
+                      "ip": { "type": "string", "description": "CIDR — this device's own address on that VLAN, distinct from the segment's shared gateway when multiple L3-capable devices (e.g. an HSRP pair) each need one" }
+                    }
+                  }
+                },
                 "description": { "type": "string" }
               }
             }

@@ -47,6 +47,35 @@ describe("golden G1 branch-office — full design composition", () => {
   it("is deterministic across repeated composition", () => {
     expect(composeBranchOfficeDesign(g1BranchOfficeParams)).toEqual(design);
   });
+
+  it("gives each HSRP router its own distinct per-VLAN address, never the switches", () => {
+    const [rtr01, rtr02] = design.devices.filter((d) => d.role === "router");
+    const trunkOf = (device: (typeof design.devices)[number]) => device.interfaces!.find((i) => i.trunk)!;
+
+    const rtr01Svis = trunkOf(rtr01!).svis!;
+    const rtr02Svis = trunkOf(rtr02!).svis!;
+    expect(rtr01Svis).toHaveLength(3); // one per VLAN
+    expect(rtr02Svis).toHaveLength(3);
+
+    // Neither router's address equals the shared HSRP gateway, and the two routers never
+    // share an address with each other, on any VLAN.
+    for (const segment of design.segments) {
+      const gateway = segment.gateway!;
+      const rtr01Ip = rtr01Svis.find((s) => s.vlanId === segment.vlanId)!.ip;
+      const rtr02Ip = rtr02Svis.find((s) => s.vlanId === segment.vlanId)!.ip;
+      expect(rtr01Ip.split("/")[0]).not.toBe(gateway);
+      expect(rtr02Ip.split("/")[0]).not.toBe(gateway);
+      expect(rtr01Ip).not.toBe(rtr02Ip);
+    }
+
+    // Access switches are L2-only — their trunk interfaces carry no svis at all.
+    const switches = design.devices.filter((d) => d.role === "access-switch");
+    for (const sw of switches) {
+      for (const iface of sw.interfaces ?? []) {
+        expect(iface.svis).toBeUndefined();
+      }
+    }
+  });
 });
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {

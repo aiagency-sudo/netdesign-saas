@@ -40,9 +40,9 @@ describe("golden G1 branch-office — IP allocation", () => {
   });
 
   it("assigns a /24 with a usable gateway to each of the 3 VLANs", () => {
-    expect(plan.segments["corp-data"]).toEqual({ cidr: "10.30.2.0/24", gateway: "10.30.2.1" });
-    expect(plan.segments["voice"]).toEqual({ cidr: "10.30.3.0/24", gateway: "10.30.3.1" });
-    expect(plan.segments["guest"]).toEqual({ cidr: "10.30.4.0/24", gateway: "10.30.4.1" });
+    expect(plan.segments["corp-data"]).toEqual({ cidr: "10.30.2.0/24", gateway: "10.30.2.1", deviceIps: {} });
+    expect(plan.segments["voice"]).toEqual({ cidr: "10.30.3.0/24", gateway: "10.30.3.1", deviceIps: {} });
+    expect(plan.segments["guest"]).toEqual({ cidr: "10.30.4.0/24", gateway: "10.30.4.1", deviceIps: {} });
   });
 
   it("is deterministic across repeated runs on the same fixture", () => {

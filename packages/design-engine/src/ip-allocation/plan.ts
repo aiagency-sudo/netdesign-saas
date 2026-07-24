@@ -39,6 +39,15 @@ export interface IpAllocationSegmentInput {
   name: string;
   /** Defaults to /24. */
   prefixLength?: number;
+  /**
+   * Device ids that each need their own unique address on this segment, in
+   * addition to the shared gateway — e.g. an HSRP-paired router's own
+   * subinterface address, distinct from the pair's shared virtual IP. Leave
+   * empty/omitted when only one device ever has L3 presence on this segment
+   * (that device's own address is just the gateway itself; no separate
+   * allocation is needed).
+   */
+  l3DeviceIds?: string[];
 }
 
 export interface IpAllocationInput {
@@ -68,6 +77,8 @@ export interface P2pLinkAllocation {
 export interface SegmentAllocation {
   cidr: string;
   gateway: string;
+  /** deviceId -> that device's own address on this segment (only for the segment's `l3DeviceIds`, if any). */
+  deviceIps: Record<string, string>;
 }
 
 export interface IpAllocationPlan {
@@ -179,8 +190,25 @@ function allocateSegments(
   for (const segment of segments) {
     const prefixLength = segment.prefixLength ?? 24;
     const cidr = allocator.allocate(prefixLength, `segment:${segment.name}`);
-    const { network } = parseCidr(cidr);
-    result[segment.name] = { cidr, gateway: intToIp(network + 1) };
+    const { network, size } = parseCidr(cidr);
+    const l3DeviceIds = segment.l3DeviceIds ?? [];
+
+    // Gateway takes the first host (network+1); each l3DeviceId takes the
+    // next sequential host after that — network/gateway/device addresses
+    // all count against the usable range.
+    const usableHosts = size - 2;
+    if (l3DeviceIds.length + 1 > usableHosts) {
+      throw new Error(
+        `Segment ${cidr} has room for ${usableHosts} host(s) but needs 1 (gateway) + ${l3DeviceIds.length} (device addresses); widen this segment's prefixLength.`,
+      );
+    }
+
+    const deviceIps: Record<string, string> = {};
+    l3DeviceIds.forEach((deviceId, index) => {
+      deviceIps[deviceId] = intToIp(network + 2 + index);
+    });
+
+    result[segment.name] = { cidr, gateway: intToIp(network + 1), deviceIps };
   }
   return result;
 }
