@@ -19,6 +19,16 @@ exports[`golden G4 smb-simple — full design composition > matches the recorded
           ],
           "description": "Access trunk to sw-01",
           "name": "eth0/1",
+          "svis": [
+            {
+              "ip": "10.40.2.1/24",
+              "vlanId": 10,
+            },
+            {
+              "ip": "10.40.3.1/24",
+              "vlanId": 20,
+            },
+          ],
           "trunk": true,
         },
       ],

@@ -1,6 +1,7 @@
 import type { Design, DesignParams, DesignParamsVlan, DeviceRole, Interface, VendorHint } from "@netdesign/schema";
 import { parseDesign } from "@netdesign/schema";
-import { planIpAllocation, type P2pLinkAllocation } from "../ip-allocation/plan.js";
+import { parseCidr } from "../ip-allocation/cidr.js";
+import { L3_CAPABLE_ROLES, planIpAllocation, type P2pLinkAllocation } from "../ip-allocation/plan.js";
 import { mustGet } from "../util.js";
 
 const DEFAULT_SITE_SUPERNET = "10.0.0.0/16";
@@ -12,6 +13,15 @@ interface LogicalLink {
   b: string;
   kind: "ethernet" | "port-channel";
   label: string;
+}
+
+/** A VLAN's addressing info needed to build each L3-capable device's per-VLAN subinterface (svis). */
+interface VlanSviInfo {
+  vlanId: number;
+  prefixLength: number;
+  gateway: string;
+  /** deviceId -> that device's own address on this VLAN (only devices that needed one distinct from the gateway — see IpAllocationSegmentInput.l3DeviceIds). */
+  deviceIps: Record<string, string>;
 }
 
 /**
@@ -62,14 +72,32 @@ export function composeBranchOfficeDesign(params: DesignParams): Design {
     );
   }
 
+  // Every router trunks every VLAN in this composer's topology (assignInterfaces below),
+  // so when there's more than one router they all need their own distinct address on each
+  // VLAN (e.g. an HSRP pair's individual subinterface IPs, distinct from the shared virtual
+  // IP). With exactly one router there's no ambiguity — its own address is just the segment
+  // gateway — so no separate per-device allocation is needed at all.
+  const l3DeviceIds = routerIds.length > 1 ? routerIds : [];
+
   const plan = planIpAllocation({
     siteSupernet,
     devices: managedDeviceIds.map((id) => ({ id, role: mustGet(roleById, id, "device role") })),
     links: logicalLinks.map((link) => ({ id: link.id, a: link.a, b: link.b, kind: link.kind })),
-    segments: params.vlans.map((vlan) => ({ name: vlan.name })),
+    segments: params.vlans.map((vlan) => ({ name: vlan.name, l3DeviceIds })),
   });
 
-  const { linkInterfaces, interfacesByDevice } = assignInterfaces(logicalLinks, plan.p2pLinks, Object.values(vlanIds));
+  const vlanSvis: VlanSviInfo[] = params.vlans.map((vlan) => {
+    const allocation = mustGet(plan.segments, vlan.name, "VLAN segment allocation");
+    const { prefixLength } = parseCidr(allocation.cidr);
+    return {
+      vlanId: mustGet(vlanIds, vlan.name, "VLAN id"),
+      prefixLength,
+      gateway: allocation.gateway,
+      deviceIps: allocation.deviceIps,
+    };
+  });
+
+  const { linkInterfaces, interfacesByDevice } = assignInterfaces(logicalLinks, plan.p2pLinks, vlanSvis, roleById);
 
   const devices = managedDeviceIds.map((id) => {
     const role = mustGet(roleById, id, "device role");
@@ -186,13 +214,18 @@ function buildLogicalLinks(input: { routerIds: string[]; switchIds: string[]; fi
  * else (router<->switch trunks, switch<->switch interlinks) is marked as a
  * VLAN trunk carrying every VLAN in this design — there's no per-switch
  * VLAN membership modeling yet, so "all VLANs on every trunk" is the only
- * consistent answer today.
+ * consistent answer today. A trunk's L3-capable end (a router, never an
+ * access switch) additionally gets `svis`: its own address on every VLAN,
+ * for config-gen to render as router-on-a-stick subinterfaces/HSRP.
  */
 function assignInterfaces(
   links: LogicalLink[],
   p2pLinks: Record<string, P2pLinkAllocation>,
-  allVlanIds: number[],
+  vlanSvis: VlanSviInfo[],
+  roleById: Map<string, DeviceRole>,
 ): { linkInterfaces: Map<string, { ifaceA: string; ifaceB: string }>; interfacesByDevice: Map<string, Interface[]> } {
+  const allVlanIds = vlanSvis.map((v) => v.vlanId);
+
   const interfaceCounters = new Map<string, number>();
   const nextInterfaceName = (deviceId: string): string => {
     const n = interfaceCounters.get(deviceId) ?? 0;
@@ -208,6 +241,20 @@ function assignInterfaces(
     interfacesByDevice.set(deviceId, list);
   };
 
+  const addTrunkInterface = (deviceId: string, ifaceName: string, peerId: string, label: string) => {
+    const role = mustGet(roleById, deviceId, "device role");
+    const svis = L3_CAPABLE_ROLES.has(role)
+      ? vlanSvis.map((vlan) => ({ vlanId: vlan.vlanId, ip: `${vlan.deviceIps[deviceId] ?? vlan.gateway}/${vlan.prefixLength}` }))
+      : undefined;
+    addInterface(deviceId, {
+      name: ifaceName,
+      trunk: true,
+      allowedVlans: allVlanIds,
+      ...(svis ? { svis } : {}),
+      description: `${label} to ${peerId}`,
+    });
+  };
+
   for (const link of links) {
     const ifaceA = nextInterfaceName(link.a);
     const ifaceB = nextInterfaceName(link.b);
@@ -218,8 +265,8 @@ function assignInterfaces(
       addInterface(link.a, { name: ifaceA, ip: `${p2p.ipA}/31`, description: `${link.label} to ${link.b}` });
       addInterface(link.b, { name: ifaceB, ip: `${p2p.ipB}/31`, description: `${link.label} to ${link.a}` });
     } else {
-      addInterface(link.a, { name: ifaceA, trunk: true, allowedVlans: allVlanIds, description: `${link.label} to ${link.b}` });
-      addInterface(link.b, { name: ifaceB, trunk: true, allowedVlans: allVlanIds, description: `${link.label} to ${link.a}` });
+      addTrunkInterface(link.a, ifaceA, link.b, link.label);
+      addTrunkInterface(link.b, ifaceB, link.a, link.label);
     }
   }
 

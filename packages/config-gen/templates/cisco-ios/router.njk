@@ -1,0 +1,41 @@
+{{ banner }}
+!
+hostname {{ hostname }}
+!
+{% for iface in physicalInterfaces %}
+interface {{ iface.name }}
+ description {{ iface.description }}
+ ip address {{ iface.ip }} {{ iface.netmask }}
+ no shutdown
+!
+{% endfor -%}
+{% for trunk in trunkInterfaces %}
+interface {{ trunk.name }}
+ description {{ trunk.description }}
+ no ip address
+ no shutdown
+!
+{% for sub in trunk.subinterfaces %}
+interface {{ trunk.name }}.{{ sub.vlanId }}
+ encapsulation dot1Q {{ sub.vlanId }}
+ ip address {{ sub.ip }} {{ sub.netmask }}
+{% if sub.hsrp %}
+ standby {{ sub.hsrp.group }} ip {{ sub.hsrp.virtualIp }}
+ standby {{ sub.hsrp.group }} priority {{ sub.hsrp.priority }}
+ standby {{ sub.hsrp.group }} preempt
+{% endif -%}
+!
+{% endfor -%}
+{% endfor -%}
+{% if ospf %}
+router ospf {{ ospf.processId }}
+{% for net in ospf.networks %}
+ network {{ net.network }} {{ net.wildcard }} area {{ net.area }}
+{% endfor -%}
+!
+{% endif -%}
+{% if defaultRouteNextHop %}
+ip route 0.0.0.0 0.0.0.0 {{ defaultRouteNextHop }}
+!
+{% endif -%}
+end

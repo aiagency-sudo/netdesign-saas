@@ -47,6 +47,17 @@ describe("golden G4 smb-simple — full design composition", () => {
   it("is deterministic across repeated composition", () => {
     expect(composeBranchOfficeDesign(g4SmbSimpleParams)).toEqual(design);
   });
+
+  it("gives the single router its own svis equal to each VLAN's gateway (no HSRP pair, no separate address needed)", () => {
+    const router = design.devices.find((d) => d.role === "router")!;
+    const trunk = router.interfaces!.find((i) => i.trunk)!;
+    expect(trunk.svis).toHaveLength(2); // one per VLAN
+
+    for (const segment of design.segments) {
+      const svi = trunk.svis!.find((s) => s.vlanId === segment.vlanId)!;
+      expect(svi.ip.split("/")[0]).toBe(segment.gateway);
+    }
+  });
 });
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {

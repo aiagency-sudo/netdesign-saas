@@ -437,6 +437,96 @@ deployed app (same sandbox limitation as every other authenticated route
 in this repo) — real test is clicking "Download HLD (.docx)" on a real
 project once this is merged.
 
+## Next step (BUILD_PLAN Session 10) — DONE
+
+> "FIRST CONFIG VENDOR. Create packages/config-gen with a nunjucks template
+> set for cisco-ios: hostname, VLANs, SVIs, trunks/access ports, OSPF,
+> HSRP, default route, NAT overload, and the lab-validation banner. Render
+> per-device configs from design JSON. Snapshot-test against G1 and G4.
+> Templates only — no LLM at render time."
+
+Before writing templates, found a real gap this session revealed: G1's
+dual-HSRP routers had no per-VLAN address of their own in `design_json`
+at all — only the shared VLAN gateway (the HSRP virtual IP) existed.
+Founder confirmed: fix it properly in `design-engine` first (per
+CLAUDE.md's rule that IP math belongs in the engine, not templates),
+then build config-gen on top of it.
+
+**`design-engine`/`schema` fix** (prerequisite, not itself Session 10):
+- `Interface` gained an optional `svis` field (`{vlanId, ip}[]`) — additive/
+  backward-compatible, no `version` bump, since real production `design_json`
+  already exists and must keep validating (see `packages/schema/src/zod/device.ts`).
+- `ip-allocation/plan.ts`'s segment allocation gained `l3DeviceIds` (devices
+  needing their own address on a segment, e.g. an HSRP pair) and returns
+  `deviceIps` per segment. Single-device segments still get zero extra
+  allocation — that device's own address is just the gateway (no
+  redundancy, no ambiguity, no wasted address).
+- `branch-office.ts`'s `assignInterfaces()` now attaches `svis` to a
+  trunk's L3-capable end only (a router, never an access switch — those
+  stay L2-only, unchanged). G1: rtr-01/rtr-02 get distinct `.2`/`.3`
+  addresses per VLAN behind gateway `.1`. G4: the lone router's `svis`
+  address *is* the gateway (no separate allocation).
+- Verified: new `plan.test.ts` cases (distinct sequential addresses,
+  empty `deviceIps` with no `l3DeviceIds`, a clear over-capacity error),
+  a new explicit assertion per golden scenario (G1: never shares an
+  address with its gateway or its peer, on any VLAN; G4: always equals
+  the gateway), plus updated snapshots. Confirmed `services/vsdx` and
+  the rest of the pipeline are unaffected — `svis` flows through
+  services/vsdx's permissive pydantic models (`extra="allow"`) harmlessly
+  since nothing there renders VLAN/interface-address data onto the
+  diagram anyway; re-ran a live export against a local instance to confirm.
+
+**`packages/config-gen`** (7th workspace package):
+- `renderCiscoIosConfig(device, design)` / `renderAllConfigs(design)` —
+  nunjucks templates (`templates/cisco-ios/{router,access-switch}.njk`),
+  a TS view-model layer that does all the data-shaping (nothing computed
+  inside the templates themselves), and a small self-contained CIDR
+  helper (doesn't depend on `design-engine` at runtime — only needs
+  single-address netmask conversion, not full block allocation).
+- Router template: physical (P2P) interfaces, router-on-a-stick
+  subinterfaces per VLAN (`interface Gi0/1.10`, `encapsulation dot1Q 10`),
+  HSRP standby lines when `routing.firstHopRedundancy === "hsrp"`
+  (alphabetically-first device id in the redundancy group = active/
+  priority 110, everyone else = standby/100 — a documented, deterministic
+  convention, not a guess), and a default route whose next-hop is looked
+  up from the design's actual P2P link to whichever peer has role
+  "firewall" (not invented — read straight from already-allocated data).
+- Switch template: global VLAN database + trunk ports' allowed-VLAN list.
+- OSPF is implemented (conditional on `routing.igp === "ospf"`) but,
+  like NAT overload, **never exercised by G1/G4** — this composer always
+  sets `igp: "static"`. **NAT overload was deliberately NOT implemented**:
+  in every topology `composeBranchOfficeDesign` can produce, a router
+  never has direct outside/internet connectivity — that link only ever
+  terminates on the firewall (see `buildLogicalLinks`), so writing NAT
+  config for the router would be speculative and untestable against any
+  real scenario. Flagging this explicitly since BUILD_PLAN names it —
+  it's a deliberate scope cut with a concrete reason, not an oversight.
+- Every rendered config starts with the mandatory banner (CLAUDE.md hard
+  rule 4), verified directly, not just visually.
+- Vendor/role dispatch is a hard boundary: `renderCiscoIosConfig` throws
+  `UnsupportedDeviceError` for anything that isn't `vendorHint:
+  "cisco-ios"` + role `router`/`access-switch`; `renderAllConfigs` skips
+  (doesn't error on) devices outside that — e.g. G1/G4's Fortinet
+  firewall renders nothing here, which is correct (fortinet-fortigate
+  templates are Phase 2, by CLAUDE.md's vendor rollout order).
+
+**Verified**: `pnpm run build`/`test`/`lint` all green across all 7
+workspace packages (121 TS tests total) plus `services/vsdx`'s 42 pytest
+tests. Beyond snapshots, real rendered output was inspected by hand for
+both G1 and G4 before locking in the snapshots — HSRP priorities,
+virtual IP, default-route next-hop, and VLAN database all confirmed
+correct against what the design JSON actually allocated, not just "the
+template ran without crashing." **Not yet done**: wiring config-gen into
+`apps/web` (a "Download configs" button, similar to `.vsdx`/HLD) —
+BUILD_PLAN Session 10 only asks for the package + its tests, not web
+integration; that's a natural follow-up, not yet built. One forward-
+looking note if that happens: `packages/config-gen` loads its `.njk`
+templates from disk at a path relative to the compiled module, which
+works today (`pnpm run build`/`test`/the CLI script) but Vercel's
+serverless bundler may or may not trace/include a directory that's only
+read via a runtime `fs` call rather than `import`ed — worth confirming
+directly (not assuming) before shipping a route that depends on it.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
