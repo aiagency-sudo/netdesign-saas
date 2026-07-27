@@ -34,7 +34,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(
       {
         error:
-          "No devices in this design have a supported vendor/role for config generation yet (only cisco-ios routers and access switches today).",
+          "No devices in this design have a supported vendor/role for config generation yet (cisco-ios routers and access switches, plus fortinet-fortigate firewalls).",
       },
       { status: 422 },
     );
