@@ -5,10 +5,17 @@ import "@xyflow/react/dist/style.css";
 import { useMemo } from "react";
 import type { Design } from "@netdesign/schema";
 import { designToFlow } from "@/lib/design-to-flow";
-import { DeviceNode } from "./flow/DeviceNode";
-import { ZoneNode } from "./flow/ZoneNode";
+import { DeviceNode, type DeviceNodeType } from "./flow/DeviceNode";
+import { roleAccent } from "./flow/role-meta";
 
-const nodeTypes: NodeTypes = { device: DeviceNode, zone: ZoneNode };
+const nodeTypes: NodeTypes = { device: DeviceNode };
+
+const defaultEdgeOptions = {
+  type: "smoothstep" as const,
+  style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+  labelStyle: { fontSize: 10, fill: "#64748b" },
+  labelBgStyle: { fill: "#ffffff", fillOpacity: 0.85 },
+};
 
 export function DesignCanvas({ design }: { design: Design }) {
   const { nodes, edges } = useMemo(() => designToFlow(design), [design]);
@@ -16,10 +23,22 @@ export function DesignCanvas({ design }: { design: Design }) {
   return (
     <div className="h-[70vh] w-full rounded-lg border border-slate-200 dark:border-slate-700">
       <ReactFlowProvider>
-        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView proOptions={{ hideAttribution: true }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          proOptions={{ hideAttribution: true }}
+        >
           <Background />
           <Controls />
-          <MiniMap pannable zoomable />
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor={(node) => roleAccent((node as DeviceNodeType).data.device.role).mini}
+          />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
