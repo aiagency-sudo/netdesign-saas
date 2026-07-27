@@ -34,7 +34,7 @@ export function WaitlistForm() {
 
   if (status === "done") {
     return (
-      <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+      <p className="rounded-lg border border-[#cfcdc4] bg-white px-4 py-3 text-sm text-[#26251e]">
         You&rsquo;re on the list — we&rsquo;ll be in touch as beta spots open up.
       </p>
     );
@@ -48,16 +48,16 @@ export function WaitlistForm() {
         value={email}
         onChange={(event) => setEmail(event.target.value)}
         placeholder="you@company.com"
-        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+        className="h-11 flex-1 rounded-lg border border-[#cfcdc4] bg-white px-4 text-sm text-[#26251e] placeholder:text-[#a09c92] focus:border-[#26251e] focus:outline-none"
       />
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-slate-900"
+        className="h-11 rounded-lg bg-[#26251e] px-5 text-sm font-medium text-[#f7f7f4] transition-colors hover:bg-black disabled:opacity-50"
       >
         {status === "submitting" ? "Joining..." : "Join the waitlist"}
       </button>
-      {error && <p className="text-sm text-red-600 sm:hidden">{error}</p>}
+      {error && <p className="text-sm text-[#cf2d56] sm:hidden">{error}</p>}
     </form>
   );
 }
