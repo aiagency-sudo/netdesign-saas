@@ -1,19 +1,14 @@
 import type { Edge } from "@xyflow/react";
 import type { Design } from "@netdesign/schema";
 import type { DeviceNodeType } from "@/components/flow/DeviceNode";
-import type { ZoneNodeType } from "@/components/flow/ZoneNode";
+import { roleRank } from "@/components/flow/role-meta";
 
-const UNASSIGNED_ZONE = "Ungrouped";
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 56;
-const NODE_GAP_X = 40;
-const NODE_GAP_Y = 72;
-const ZONE_PADDING = 32;
-const ZONE_HEADER_HEIGHT = 32;
-const ZONE_GAP_X = 80;
-const MAX_COLUMNS_PER_ZONE = 3;
+const NODE_WIDTH = 176;
+const NODE_HEIGHT = 64;
+const H_GAP = 48; // horizontal gap between devices in the same tier
+const V_GAP = 88; // vertical gap between tiers
 
-export type FlowNode = DeviceNodeType | ZoneNodeType;
+export type FlowNode = DeviceNodeType;
 
 export interface DesignFlow {
   nodes: FlowNode[];
@@ -22,64 +17,56 @@ export interface DesignFlow {
 
 /**
  * Pure conversion from a validated design JSON to React Flow nodes/edges.
- * Devices are grouped into one "zone" group node per distinct `device.zone`
- * (devices without a zone land in a shared "Ungrouped" group), laid out as
- * a wrapping grid within their zone, with zones placed left-to-right.
+ * Devices are laid out in horizontal tiers by role (internet → firewall →
+ * routers → switches → endpoints), each tier centered, so the canvas reads
+ * top-to-bottom like a real network diagram. Edges are wired to whichever
+ * handles keep the links flowing cleanly: down between tiers, sideways within
+ * one (see DeviceNode for the handle ids).
  */
 export function designToFlow(design: Design): DesignFlow {
-  const zoneOrder: string[] = [];
-  const devicesByZone = new Map<string, Design["devices"]>();
-
+  // Bucket devices by role rank, then compact the ranks so empty tiers leave
+  // no vertical gap (a branch office uses firewall/router/access-switch only).
+  const byRank = new Map<number, Design["devices"]>();
   for (const device of design.devices) {
-    const zone = device.zone ?? UNASSIGNED_ZONE;
-    let bucket = devicesByZone.get(zone);
-    if (!bucket) {
-      bucket = [];
-      devicesByZone.set(zone, bucket);
-      zoneOrder.push(zone);
+    const rank = roleRank(device.role);
+    const bucket = byRank.get(rank);
+    if (bucket) {
+      bucket.push(device);
+    } else {
+      byRank.set(rank, [device]);
     }
-    bucket.push(device);
   }
 
+  const sortedRanks = [...byRank.keys()].sort((a, b) => a - b);
+  const rows = sortedRanks.map((rank) =>
+    // Stable order within a tier, keeping redundancy pairs adjacent.
+    [...(byRank.get(rank) ?? [])].sort((a, b) =>
+      `${a.redundancyGroup ?? ""}:${a.id}`.localeCompare(`${b.redundancyGroup ?? ""}:${b.id}`),
+    ),
+  );
+
+  const maxRowCount = rows.reduce((max, row) => Math.max(max, row.length), 1);
+  const totalWidth = maxRowCount * NODE_WIDTH + (maxRowCount - 1) * H_GAP;
+
   const nodes: FlowNode[] = [];
-  let zoneX = 0;
+  const rankById = new Map<string, number>();
+  const columnById = new Map<string, number>();
 
-  for (const zone of zoneOrder) {
-    const devices = devicesByZone.get(zone) ?? [];
-    const columns = Math.min(MAX_COLUMNS_PER_ZONE, devices.length) || 1;
-    const rows = Math.ceil(devices.length / columns);
-    const zoneWidth = columns * NODE_WIDTH + (columns - 1) * NODE_GAP_X + ZONE_PADDING * 2;
-    const zoneHeight = ZONE_HEADER_HEIGHT + rows * NODE_HEIGHT + (rows - 1) * NODE_GAP_Y + ZONE_PADDING * 2;
-    const zoneId = `zone:${zone}`;
-
-    nodes.push({
-      id: zoneId,
-      type: "zone",
-      position: { x: zoneX, y: 0 },
-      data: { label: zone },
-      style: { width: zoneWidth, height: zoneHeight },
-      selectable: false,
-      draggable: false,
-    });
-
-    devices.forEach((device, index) => {
-      const col = index % columns;
-      const row = Math.floor(index / columns);
+  rows.forEach((row, rowIndex) => {
+    const rowWidth = row.length * NODE_WIDTH + (row.length - 1) * H_GAP;
+    const startX = (totalWidth - rowWidth) / 2; // center each tier under the widest one
+    row.forEach((device, column) => {
+      rankById.set(device.id, sortedRanks[rowIndex]!);
+      columnById.set(device.id, column);
       nodes.push({
         id: device.id,
         type: "device",
-        parentId: zoneId,
-        extent: "parent",
-        position: {
-          x: ZONE_PADDING + col * (NODE_WIDTH + NODE_GAP_X),
-          y: ZONE_HEADER_HEIGHT + ZONE_PADDING + row * (NODE_HEIGHT + NODE_GAP_Y),
-        },
+        position: { x: startX + column * (NODE_WIDTH + H_GAP), y: rowIndex * (NODE_HEIGHT + V_GAP) },
+        width: NODE_WIDTH,
         data: { device },
       });
     });
-
-    zoneX += zoneWidth + ZONE_GAP_X;
-  }
+  });
 
   const deviceIds = new Set(design.devices.map((device) => device.id));
   const edges: Edge[] = [];
@@ -90,13 +77,33 @@ export function designToFlow(design: Design): DesignFlow {
     if (!deviceIds.has(aId) || !deviceIds.has(bId)) {
       return; // link end points outside the design (e.g. an ISP hop) — nothing to draw it to
     }
-    edges.push({
-      id: `link-${index}`,
-      source: aId,
-      target: bId,
-      label: [aInterface, bInterface].filter(Boolean).join(" ↔ "),
-      type: "smoothstep",
-    });
+
+    const label = [aInterface, bInterface].filter(Boolean).join(" ↔ ");
+    const rankA = rankById.get(aId)!;
+    const rankB = rankById.get(bId)!;
+
+    let source: string;
+    let target: string;
+    let sourceHandle: string;
+    let targetHandle: string;
+
+    if (rankA === rankB) {
+      // Same tier: left device sources from its right handle into the right device's left.
+      const aIsLeft = (columnById.get(aId) ?? 0) <= (columnById.get(bId) ?? 0);
+      source = aIsLeft ? aId : bId;
+      target = aIsLeft ? bId : aId;
+      sourceHandle = "r";
+      targetHandle = "l";
+    } else {
+      // Different tiers: the higher device (smaller rank) sources downward.
+      const aIsHigher = rankA < rankB;
+      source = aIsHigher ? aId : bId;
+      target = aIsHigher ? bId : aId;
+      sourceHandle = "b";
+      targetHandle = "t";
+    }
+
+    edges.push({ id: `link-${index}`, source, target, sourceHandle, targetHandle, label, type: "smoothstep" });
   });
 
   return { nodes, edges };

@@ -782,6 +782,56 @@ Also still outstanding from item 2: the founder needs to run
 `supabase/migrations/0003_generation_rate_limit.sql` against the
 production Supabase project.
 
+## Next step (Phase 2 prep: polish the in-app diagram) — DONE
+
+The in-app React Flow diagram used to group devices into one dashed "zone"
+box laid out as a wrapping 3-column grid. Since neither composer
+(branch-office/smb-flat) actually sets `device.zone`, every device fell
+into a single "Ungrouped" grid — the "bag of boxes" look the founder
+flagged (the design only looked like a network diagram once exported to
+Visio/draw.io, which apply their own layout). Replaced it with a
+role-tiered hierarchical layout so the *in-app* view reads like a real
+diagram, top-to-bottom.
+
+**What changed (all in `apps/web`, no engine/schema/API touch):**
+- `components/flow/role-meta.ts` (new): role → vertical tier rank
+  (internet → firewall → routers → switches → endpoints), human label,
+  and accent colors (bar class + icon class + minimap hex). Tiers are
+  *compacted* at layout time so empty ranks leave no gap (a branch office
+  uses only firewall/router/access-switch tiers).
+- `lib/design-to-flow.ts`: rewritten. Buckets devices by role rank,
+  compacts ranks to rows, centers each row under the widest tier, and
+  assigns each edge the right handle pair — inter-tier links flow
+  top→bottom (higher device's bottom handle → lower device's top),
+  same-tier links go side-to-side (left device's right handle → right
+  device's left). Verified against a real composed G1 design: the 5th
+  link (`sw-01 ↔ sw-02` port-channel) correctly renders as a horizontal
+  same-tier edge, the rest as vertical inter-tier edges.
+- `components/flow/DeviceNode.tsx`: four directional handles (t/l as
+  targets, r/b as sources), role accent bar + role-colored icon, human
+  role label + optional zone, and an "HA" badge when
+  `device.redundancyGroup` is set.
+- `components/DesignCanvas.tsx`: dropped the ZoneNode; role-colored
+  MiniMap dots; cleaner default edge styling (grey smoothstep, subtle
+  labels); `fitView` padding.
+- Deleted `components/flow/ZoneNode.tsx` (now unused; zone is shown as a
+  node badge instead of a big box).
+
+**Verified visually, not just by types**: composed a real G1 design,
+rendered it through the actual `DesignCanvas` in a throwaway route via a
+headless-Chromium screenshot, and confirmed the hierarchy (firewall on
+top, HSRP router pair with HA badges centered below, access switches at
+the bottom, port-labelled orthogonal links). Screenshot shared with the
+founder. Scaffolding (preview route, temp env, generator script) all
+torn down; only the 5 real source changes remain. Full monorepo
+build/typecheck/lint/test green.
+
+**Decision noted**: zone *grouping boxes* were removed rather than kept,
+because no current composer emits zones — a per-node zone badge covers
+today's needs. When a zone-aware composer lands (e.g. a real DMZ design,
+G5), revisit whether to bring back swimlane/backdrop grouping; the role
+tiers and badge are the interim.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
