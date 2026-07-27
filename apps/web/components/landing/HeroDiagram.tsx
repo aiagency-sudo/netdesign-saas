@@ -2,90 +2,68 @@
  * A lightweight, static illustration of the kind of role-tiered topology the
  * app produces — internet → firewall → HSRP router pair → access switches.
  * Deliberately hand-drawn SVG (not a live React Flow render) so the hero
- * stays fast and dependency-free; it mirrors the real in-app diagram's tiers
- * and accent colors.
+ * stays fast and dependency-free. Rendered in a restrained warm/monochrome
+ * palette with mono labels, to sit inside the IDE-style mockup card.
  */
+const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace";
+
+const INK = "#26251e";
+const BODY = "#5a5852";
+const MUTED = "#807d72";
+const HAIRLINE = "#cfcdc4";
+const CANVAS_SOFT = "#fafaf7";
+
 export function HeroDiagram() {
   return (
     <svg
       viewBox="0 0 420 320"
       role="img"
       aria-label="Example network topology: internet, firewall, two redundant routers, two access switches"
-      className="h-auto w-full max-w-md"
+      className="h-auto w-full"
     >
       {/* links (drawn first, under the nodes) */}
-      <g stroke="currentColor" strokeWidth="1.5" className="text-slate-300 dark:text-slate-600">
+      <g stroke={HAIRLINE} strokeWidth="1.25">
         <line x1="210" y1="52" x2="210" y2="80" />
         <line x1="210" y1="116" x2="150" y2="150" />
         <line x1="210" y1="116" x2="270" y2="150" />
         <line x1="150" y1="186" x2="130" y2="230" />
         <line x1="270" y1="186" x2="290" y2="230" />
-        <line x1="150" y1="168" x2="270" y2="168" strokeDasharray="4 4" />
-        <line x1="130" y1="266" x2="290" y2="266" strokeDasharray="4 4" />
+        <line x1="150" y1="168" x2="270" y2="168" strokeDasharray="3 4" />
+        <line x1="130" y1="266" x2="290" y2="266" strokeDasharray="3 4" />
       </g>
 
       {/* internet */}
       <g>
-        <ellipse cx="210" cy="30" rx="46" ry="22" className="fill-slate-100 dark:fill-slate-800" stroke="#94a3b8" />
-        <text x="210" y="35" textAnchor="middle" className="fill-slate-500 dark:fill-slate-400" fontSize="12">
-          Internet
+        <ellipse cx="210" cy="30" rx="46" ry="21" fill={CANVAS_SOFT} stroke={HAIRLINE} />
+        <text x="210" y="34" textAnchor="middle" fill={MUTED} fontSize="11" fontFamily={MONO}>
+          internet
         </text>
       </g>
 
-      {/* firewall */}
-      <Node x={168} y={80} w={84} label="fw-01" role="Firewall" accent="#f97316" />
-
-      {/* routers (HSRP pair) */}
-      <Node x={108} y={150} w={84} label="rtr-01" role="Router" accent="#6366f1" ha />
-      <Node x={228} y={150} w={84} label="rtr-02" role="Router" accent="#6366f1" ha />
-
-      {/* access switches */}
-      <Node x={88} y={230} w={84} label="sw-01" role="Switch" accent="#0ea5e9" />
-      <Node x={248} y={230} w={84} label="sw-02" role="Switch" accent="#0ea5e9" />
+      <Node x={168} y={80} w={84} label="fw-01" role="firewall" />
+      <Node x={108} y={150} w={84} label="rtr-01" role="router" ha />
+      <Node x={228} y={150} w={84} label="rtr-02" role="router" ha />
+      <Node x={88} y={230} w={84} label="sw-01" role="switch" />
+      <Node x={248} y={230} w={84} label="sw-02" role="switch" />
     </svg>
   );
 }
 
-function Node({
-  x,
-  y,
-  w,
-  label,
-  role,
-  accent,
-  ha,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  label: string;
-  role: string;
-  accent: string;
-  ha?: boolean;
-}) {
+function Node({ x, y, w, label, role, ha }: { x: number; y: number; w: number; label: string; role: string; ha?: boolean }) {
   const h = 36;
   return (
     <g>
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx="7"
-        className="fill-white stroke-slate-300 dark:fill-slate-800 dark:stroke-slate-600"
-        strokeWidth="1"
-      />
-      <rect x={x} y={y} width="4" height={h} rx="2" fill={accent} />
-      <text x={x + 14} y={y + 16} className="fill-slate-900 dark:fill-slate-100" fontSize="11" fontWeight="600">
+      <rect x={x} y={y} width={w} height={h} rx="7" fill="#ffffff" stroke={HAIRLINE} strokeWidth="1" />
+      <text x={x + 12} y={y + 16} fill={INK} fontSize="12" fontFamily={MONO}>
         {label}
       </text>
-      <text x={x + 14} y={y + 28} fill={accent} fontSize="9">
+      <text x={x + 12} y={y + 28} fill={BODY} fontSize="9" fontFamily={MONO}>
         {role}
       </text>
       {ha && (
         <>
-          <rect x={x + w - 24} y={y + 6} width="18" height="12" rx="6" fill={accent} opacity="0.15" />
-          <text x={x + w - 15} y={y + 15} textAnchor="middle" fill={accent} fontSize="8" fontWeight="700">
+          <rect x={x + w - 26} y={y + 6} width="20" height="12" rx="6" fill="none" stroke={HAIRLINE} />
+          <text x={x + w - 16} y={y + 15} textAnchor="middle" fill={MUTED} fontSize="7" fontFamily={MONO} letterSpacing="0.5">
             HA
           </text>
         </>
