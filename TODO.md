@@ -553,6 +553,235 @@ under Turbopack at all), then with the real, correctly-scoped key
 (confirmed the templates appear in `configs`'s trace file and nowhere
 else's).
 
+## Next step (BUILD_PLAN Session 11-12, item 1: clarifying-question error handling) — DONE
+
+Founder approved this order for hardening: (1) clarifying questions →
+(2) rate limiting → (4) confirm G1/G4 golden suite → pause for founder to
+set up a PostHog account before (3) analytics. This entry covers item 1
+(items 2 and 4 to follow in later sessions; item 3 is blocked on the
+founder's PostHog account).
+
+**The gap**: `extractDesignParams()` forced Claude to call
+`emit_design_params` via `toolChoice: {type: "tool", name: TOOL_NAME}` —
+architecturally, Claude could never decline or ask a question. This is
+why the earlier campus/three-tier test prompt got silently mapped onto
+`branch-office` with the gap recorded as an "assumption" instead of the
+system asking what the founder actually wanted — correct behavior for
+prompts close enough to guess, but a bad default for prompts that aren't
+close to either supported pattern at all.
+
+**Fix, in `packages/llm-extraction`**:
+- `src/prompt.ts`: added a second tool, `ask_clarifying_questions`
+  (`{questions: string[]}`, 1-3 items, schema derived from a new
+  `clarifyingQuestionsSchema` zod schema via the same `zodToJsonSchema()`
+  pattern already used for `emit_design_params`). Added `zod` as a direct
+  dependency (was only available transitively through `@netdesign/schema`
+  before — now imported directly, so it belongs in `package.json`).
+  Rewrote `SYSTEM_PROMPT` to tell Claude to prefer emitting design-params
+  (simplify/guess, record the gap in "assumptions") and only reach for
+  the clarify tool when a fact would have to be fabricated outright, not
+  simplified — e.g. a topology that doesn't resemble either flat pattern
+  at all, or no usable signal on router/switch counts whatsoever.
+- `src/client.ts`: `toolChoice` type widened to
+  `{type: "tool", name: string} | {type: "any"}` — deliberately not
+  `{type: "auto"}`, since a plain-text-only response is never an
+  acceptable outcome; some tool call is still forced, just not a specific
+  one.
+- `src/extract.ts`: `extractDesignParams()` now offers both tools with
+  `toolChoice: {type: "any"}`. New `NeedsClarificationError extends Error`
+  (carries `questions: string[]`), thrown by `parseExtractionResponse()`
+  when the response's `tool_use` block names the clarify tool instead of
+  `emit_design_params` — same established pattern as the existing
+  `DesignParamsExtractionError`, not a return-type change, so it stays a
+  minimal diff against the current call sites.
+- `generate.ts` needed no changes — it just calls `extractDesignParams()`
+  then `composeBranchOfficeDesign()`, so the new error propagates through
+  for free.
+- Tests: `prompt.test.ts` (+2), `extract.test.ts` (+3, including
+  `extractDesignParams()` propagating `NeedsClarificationError` end to
+  end), updated the existing "forces the tool" test to assert
+  `{type: "any"}` and both tools offered instead. All 18
+  `llm-extraction` tests pass.
+
+**Wired into `apps/web`**: both `app/api/generate/route.ts` and
+`app/api/projects/[id]/regenerate/route.ts` gained a
+`NeedsClarificationError` catch branch returning
+`{needsClarification: true, questions: [...]}` at 422 (checked before the
+existing `DesignParamsExtractionError`/`DesignValidationError` branch,
+since `NeedsClarificationError` doesn't extend either). `NewProjectPage`
+and `RegenerateForm` both now check for `needsClarification` in the error
+response and render the returned questions in an amber callout instead of
+the generic red error text, with a prompt to add the missing detail and
+resubmit — no new Q&A flow (the user just edits their prose), since a
+structured back-and-forth wasn't asked for and the existing regenerate/
+retry loop already covers "try again with more detail."
+
+**Not yet manually tested against the real Claude API** (only via the
+fake-client unit tests) — same sandbox limitation as prior sessions;
+this needs a real ambiguous prompt (e.g. the earlier campus/three-tier
+one) tried against the deployed app to confirm Claude actually reaches
+for the new tool rather than continuing to guess. Founder should try that
+once this is live.
+
+**Item 4 (confirm golden suite) also done in passing**: full
+`pnpm test:golden` run (build + `test/golden` in `design-engine`) is
+green — 22 tests across G1 and G4. Only G1/G4 composers exist; G2/G3/G5
+were flagged to the founder as scoping gaps before this session started
+and are not being fabricated here.
+
+Full monorepo `pnpm run build`, `pnpm -r run test`, `pnpm run lint`, and
+`pnpm run test:golden` all green before this commit.
+
+**Next**: item 2 (rate limiting) — planned to use Supabase (a table +
+row-count/timestamp check, or a Postgres function) rather than a new
+external service like Upstash, to avoid requiring the founder to set up
+another account. Then pause for the founder's PostHog account before
+item 3.
+
+## Next step (BUILD_PLAN Session 11-12, item 2: rate limiting) — DONE
+
+Continues the approved hardening order (item 1 clarifying questions →
+item 2 rate limiting → item 4 confirm golden suite → pause for founder's
+PostHog account before item 3).
+
+**Why Supabase, not Upstash/Redis**: rate limiting only needs to stop a
+signed-in user from burning Claude API spend in a tight loop — it's not
+high-throughput enough to need a dedicated store, and adding Upstash
+would mean the founder setting up yet another account/env var for a
+problem Postgres already solves. Chose an append-only events table over
+a per-user counter column: a counter needs separate increment/reset/decay
+logic to get the rolling window right; a table just needs "count rows
+newer than `now() - interval`," and it doubles as an audit trail for
+free.
+
+**`supabase/migrations/0003_generation_rate_limit.sql`**: new
+`generation_events (id, owner_id, created_at)` table, RLS scoped to
+`auth.uid() = owner_id` (same pattern as `projects`, not the join-through
+pattern `project_versions` needed, since this table has its own owner
+column). Empirically verified against a local Postgres 16 instance
+(stood up, then torn down, same as the 0002 migration's verification):
+seeded a stub `auth.uid()` function reading a session GUC, confirmed (a)
+a user can insert their own event, (b) inserting an event with someone
+else's `owner_id` is rejected by RLS, and (c) the rolling-window count
+query correctly scopes to one user's own rows and correctly excludes a
+row seeded 2 hours in the past when filtering `created_at >= now() -
+interval '1 hour'`.
+
+**`apps/web/lib/rate-limit.ts`** (new): `checkGenerationRateLimit(supabase,
+ownerId)` counts the user's `generation_events` in the last hour via
+`.select("id", {count: "exact", head: true})` (no rows fetched, just the
+count) and compares against `GENERATION_RATE_LIMIT_PER_HOUR` (env var,
+default 20 — a flat abuse ceiling, not a paid-plan quota, since there are
+no billing tiers yet and CLAUDE.md says not to touch Stripe without
+founder review). `recordGenerationEvent(supabase, ownerId)` inserts one
+row. Both take the same `SupabaseClient<Database>` already constructed by
+each route's `createClient()`, no new client/connection.
+
+**Wired into both generation entry points**: `app/api/generate/route.ts`
+and `app/api/projects/[id]/regenerate/route.ts` each call
+`checkGenerationRateLimit()` after parsing the request body (no point
+rate-limiting a request that's going to 400 anyway) and before the
+`try` block, returning 429 with a plain-English message if over the
+limit. Inside the `try`, `recordGenerationEvent()` is called *before* the
+Claude API call — a failed extraction still spent Claude API tokens, so
+it still counts against the hour, not just successful generations.
+
+`apps/web/lib/supabase/types.ts` gained the `generation_events` table
+shape, hand-mirrored from the migration like the other two tables.
+
+**Not yet manually verified against the deployed app** (same sandbox
+limitation noted for item 1) — needs the founder to run
+`0003_generation_rate_limit.sql` against the real Supabase project (same
+"paste into the SQL editor" step as `0002_project_versions.sql` before
+it), then optionally try generating >20 times in an hour to see the 429.
+Default of 20/hour is a guess or a boring-option call — the founder may
+want to tune `GENERATION_RATE_LIMIT_PER_HOUR` in Vercel once they see
+real usage.
+
+Full monorepo `pnpm run build`, `pnpm run typecheck`, `pnpm -r run
+test`, and `pnpm run lint` all green before this commit. No changes
+needed in `packages/llm-extraction` or any other package — this is
+entirely an `apps/web` + Supabase migration concern.
+
+**Next**: item 4 (re-confirm G1/G4 golden suite) was already re-verified
+in passing during item 1's session (22 tests green); nothing further to
+do there before the PostHog pause ahead of item 3.
+
+## Next step (BUILD_PLAN Session 11-12, item 3: PostHog analytics) — DONE
+
+Founder set up a PostHog account and used its GitHub-linked wizard
+("PostHog Code") to auto-generate the integration rather than have me
+build it from scratch — PR #12, `posthog[bot]`. Reviewed the PR before
+merge (not rubber-stamped): read the full diff, then actually ran the
+branch in a throwaway git worktree (real `pnpm install` + `next build` +
+a live `next dev` server hit with headless Chromium, plus a local
+Postgres-style empirical check where relevant) rather than reasoning
+about it in the abstract. Found three real, confirmed-not-guessed bugs
+before merge and pushed fixes directly onto the PR's branch
+(`posthog/instrumentation-ec9f5f`, commit `a4b7ee7`):
+
+1. **Analytics silently dead for anyone not yet signed in.** The
+   pre-existing auth gate (`apps/web/proxy.ts` matcher +
+   `lib/supabase/middleware.ts`'s `PUBLIC_PATHS`) redirects any
+   unauthenticated request to `/login` unless explicitly exempted. The
+   PR added `/ingest/*` rewrites for PostHog but never exempted that
+   path — confirmed via `curl` that `/ingest/decide` came back as a 307
+   to `/login` instead of being proxied. This broke PostHog's own
+   bootstrap call and the login page's `magic_link_requested` event for
+   every anonymous visitor, i.e. the entire top of the "Sign-in to first
+   design" funnel. Fixed by excluding `ingest` in `proxy.ts`'s matcher.
+2. **Client and server events used two different identities.** Server
+   routes captured with `distinctId: user.id` (the real Supabase UUID);
+   client-side captures (`login/page.tsx`, `projects/new/page.tsx`,
+   `RegenerateForm.tsx`) never called `posthog.identify()`, so they
+   stayed on the browser's anonymous id forever. That splits both the
+   "Design generation funnel" and "Sign-in to first design" funnel
+   across two unrelated person profiles — exactly the two insights the
+   PR's own dashboard highlights. Fixed with a new
+   `components/PostHogIdentify.tsx` (client component, mounted once in
+   `app/layout.tsx`) that identifies the browser as `user.id` as soon as
+   a Supabase session is found.
+3. **Local dev broke on every page load without the new env vars.**
+   `instrumentation-client.ts` threw at module load whenever
+   `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` was unset outside production —
+   confirmed via a headless-Chromium hit against a real `next dev`
+   server (uncaught page error, not just a lint-level guess). Since
+   `.env.example` was never updated with the two new vars either, this
+   would've broken `pnpm dev` for any fresh clone until someone
+   discovered and set two undocumented variables — a direct hit against
+   this project's "leave the repo green" session-resumability rule.
+   Downgraded to `console.warn` and documented both vars as optional in
+   `.env.example`.
+
+Also set `disable_session_recording: true` explicitly: none of the PR's
+6 dashboards/insights use session replay, and this app's post-generation
+pages render real customer network data (IP plans, device lists, real
+topology) as plain DOM content that posthog-js's default input-masking
+(`maskAllInputs: true`, verified by reading the bundled source) wouldn't
+cover if replay were ever turned on at the project level later without
+this context.
+
+Founder set the two Vercel env vars, marked the PR ready for review, and
+merged it (#12, merged into `main`). Rebased this branch onto the new
+`main` afterward — the PostHog PR touched the same 4 files as items 1/2
+above (`generate/route.ts`, `regenerate/route.ts`, `projects/new/page.tsx`,
+`RegenerateForm.tsx`); the rebase resolved automatically with no
+conflicts. Full monorepo build/test/lint re-verified green on the
+combined result post-rebase.
+
+**Not yet verified**: real events actually landing in the PostHog
+Activity view / dashboard populating post-deploy — that's on the founder
+to confirm by clicking through the live app once Vercel's redeploy with
+the new env vars is live.
+
+This closes out all four Session 11-12 hardening items (1 clarifying
+questions, 2 rate limiting, 3 PostHog, 4 golden suite re-confirmed).
+**Still not merged**: this branch itself (items 1+2, clarifying
+questions + rate limiting) has no PR yet — founder hasn't asked for one.
+Also still outstanding from item 2: the founder needs to run
+`supabase/migrations/0003_generation_rate_limit.sql` against the
+production Supabase project.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own

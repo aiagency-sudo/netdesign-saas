@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   DesignParamsExtractionError,
+  NeedsClarificationError,
   createAnthropicExtractionClient,
   generateBranchOfficeDesign,
 } from "@netdesign/llm-extraction";
 import { DesignValidationError } from "@netdesign/schema";
+import { checkGenerationRateLimit, recordGenerationEvent } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { getPostHogClient } from "@/lib/posthog-server";
 
@@ -33,7 +35,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsedBody.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
   }
 
+  const rateLimit = await checkGenerationRateLimit(supabase, user.id);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: `You've reached the limit of ${rateLimit.limit} generations per hour. Try again later.` },
+      { status: 429 },
+    );
+  }
+
   try {
+    await recordGenerationEvent(supabase, user.id);
     const client = createAnthropicExtractionClient();
     const design = await generateBranchOfficeDesign(parsedBody.data.prompt, { client });
 
@@ -78,6 +89,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ projectId: project.id, design });
   } catch (err) {
+    if (err instanceof NeedsClarificationError) {
+      return NextResponse.json({ needsClarification: true, questions: err.questions }, { status: 422 });
+    }
     if (err instanceof DesignParamsExtractionError || err instanceof DesignValidationError) {
       const posthog = getPostHogClient();
       if (posthog) {

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtractionClient, ExtractionMessageParams, ExtractionResponse } from "../src/client.js";
-import { DesignParamsExtractionError, extractDesignParams, parseExtractionResponse } from "../src/extract.js";
-import { TOOL_NAME } from "../src/prompt.js";
+import {
+  DesignParamsExtractionError,
+  NeedsClarificationError,
+  extractDesignParams,
+  parseExtractionResponse,
+} from "../src/extract.js";
+import { CLARIFY_TOOL_NAME, TOOL_NAME } from "../src/prompt.js";
 
 const VALID_PARAMS = {
   designPattern: "smb-flat",
@@ -50,10 +55,37 @@ describe("parseExtractionResponse", () => {
       parseExtractionResponse({ content: [{ type: "tool_use", name: "some_other_tool", input: VALID_PARAMS }] }),
     ).toThrow(DesignParamsExtractionError);
   });
+
+  it("throws NeedsClarificationError with the questions when Claude calls the clarify tool", () => {
+    try {
+      parseExtractionResponse({
+        content: [
+          {
+            type: "tool_use",
+            name: CLARIFY_TOOL_NAME,
+            input: { questions: ["How many routers do you need?", "Is redundancy required?"] },
+          },
+        ],
+      });
+      expect.unreachable("expected parseExtractionResponse to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(NeedsClarificationError);
+      expect((err as NeedsClarificationError).questions).toEqual([
+        "How many routers do you need?",
+        "Is redundancy required?",
+      ]);
+    }
+  });
+
+  it("throws DesignParamsExtractionError when the clarify tool's input fails validation", () => {
+    expect(() =>
+      parseExtractionResponse({ content: [{ type: "tool_use", name: CLARIFY_TOOL_NAME, input: { questions: [] } }] }),
+    ).toThrow(DesignParamsExtractionError);
+  });
 });
 
 describe("extractDesignParams", () => {
-  it("calls the client with the extraction tool forced and returns the parsed params", async () => {
+  it("calls the client offering both tools (some tool call forced, not a specific one) and returns the parsed params", async () => {
     const client = fakeClient({ content: [{ type: "tool_use", name: TOOL_NAME, input: VALID_PARAMS }] });
 
     const result = await extractDesignParams("One router, one switch, one firewall.", { client });
@@ -61,9 +93,8 @@ describe("extractDesignParams", () => {
     expect(result.siteName).toBe("Fake Client Test");
     expect(client.createMessage).toHaveBeenCalledTimes(1);
     const call = client.createMessage.mock.calls[0]![0] as ExtractionMessageParams;
-    expect(call.toolChoice).toEqual({ type: "tool", name: TOOL_NAME });
-    expect(call.tools).toHaveLength(1);
-    expect(call.tools[0]!.name).toBe(TOOL_NAME);
+    expect(call.toolChoice).toEqual({ type: "any" });
+    expect(call.tools.map((tool) => tool.name)).toEqual([TOOL_NAME, CLARIFY_TOOL_NAME]);
     expect(call.messages).toEqual([{ role: "user", content: "One router, one switch, one firewall." }]);
   });
 
@@ -80,5 +111,12 @@ describe("extractDesignParams", () => {
   it("propagates DesignParamsExtractionError when the client's response doesn't validate", async () => {
     const client = fakeClient({ content: [{ type: "text", text: "no tool call" }] });
     await expect(extractDesignParams("prose", { client })).rejects.toThrow(DesignParamsExtractionError);
+  });
+
+  it("propagates NeedsClarificationError when Claude asks a clarifying question instead", async () => {
+    const client = fakeClient({
+      content: [{ type: "tool_use", name: CLARIFY_TOOL_NAME, input: { questions: ["How many sites?"] } }],
+    });
+    await expect(extractDesignParams("build me a network", { client })).rejects.toThrow(NeedsClarificationError);
   });
 });

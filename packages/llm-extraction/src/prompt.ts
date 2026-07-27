@@ -1,4 +1,5 @@
 import { designParamsSchema, type DesignParams } from "@netdesign/schema";
+import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 export const TOOL_NAME = "emit_design_params";
@@ -18,6 +19,31 @@ export const toolInputSchema: Record<string, unknown> = (() => {
     string,
     unknown
   >;
+  return schema;
+})();
+
+export const CLARIFY_TOOL_NAME = "ask_clarifying_questions";
+
+export const CLARIFY_TOOL_DESCRIPTION =
+  "Call this INSTEAD of emit_design_params when the prose is too ambiguous to map onto branch-office or " +
+  "smb-flat even as a reasonable guess — e.g. the topology described doesn't resemble either pattern at all, " +
+  "or a load-bearing fact (how many routers/switches, whether redundancy is wanted) is genuinely unknowable " +
+  "from what the user wrote. Ask 1-3 short, specific questions that would let a second attempt succeed.";
+
+export const clarifyingQuestionsSchema = z.object({
+  questions: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(3)
+    .describe("1-3 short, specific questions to ask the user before a design can be extracted."),
+});
+
+export type ClarifyingQuestions = z.infer<typeof clarifyingQuestionsSchema>;
+
+export const clarifyToolInputSchema: Record<string, unknown> = (() => {
+  const { $schema: _$schema, ...schema } = zodToJsonSchema(clarifyingQuestionsSchema, {
+    $refStrategy: "none",
+  }) as Record<string, unknown>;
   return schema;
 })();
 
@@ -103,17 +129,27 @@ function formatExample(example: FewShotExample, index: number): string {
 }
 
 export const SYSTEM_PROMPT = `You are the intent-extraction stage of NetDesign AI. Read the user's network \
-requirements prose and call the ${TOOL_NAME} tool with the structured design parameters — never write config, \
-never invent IP addresses (the design engine assigns those deterministically), and never guess a designPattern \
-outside "branch-office" or "smb-flat" (that's all the engine can compose right now — if the request clearly \
-needs something else, still pick the closer of the two and record the gap in "assumptions").
+requirements prose and call one of two tools — never write config, never invent IP addresses (the design \
+engine assigns those deterministically).
 
-Rules:
+Call ${TOOL_NAME} whenever "branch-office" or "smb-flat" is a reasonable fit, even an imperfect one — pick the \
+closer of the two and record any simplification you made as a plain sentence in "assumptions". Only reach for \
+${CLARIFY_TOOL_NAME} instead when neither pattern is a reasonable guess at all, or a fact you'd need to invent \
+outright (not simplify or infer) to proceed is missing — e.g. the topology is a multi-tier/leaf-spine/hybrid-cloud \
+design that doesn't resemble either flat pattern, or the prose gives no usable signal on router/switch counts \
+whatsoever. Prefer emitting design-params over asking; only ask when a guess would be a fabrication, not a \
+simplification.
+
+Rules for ${TOOL_NAME}:
 - "branch-office" implies router redundancy is expected/likely; "smb-flat" implies a single router. Prefer the \
 pattern that matches what the user described, but let router.count/redundancy be the source of truth.
 - Every fact you had to guess because the user didn't state it belongs in "assumptions" as a plain sentence — \
 this is what gets shown back to the user for confirmation, so it must be human-readable, not a code.
 - Keep "intentSummary" to 1-2 sentences restating what you understood.
 - VLAN names should be short, lowercase, kebab-case identifiers (e.g. "corp-data", "guest", "voice").
+
+Rules for ${CLARIFY_TOOL_NAME}:
+- Ask 1-3 short, specific questions — each one should unblock extraction on the next attempt.
+- Don't ask about things the engine can safely default (like IP ranges); those belong in "assumptions" instead.
 
 ${EXAMPLES.map(formatExample).join("\n\n")}`;
