@@ -878,6 +878,59 @@ the production Supabase project (same SQL-editor step as prior migrations)
 before the waitlist form works live. The rest deploys with the normal Vercel
 push.
 
+## Deployment / ops runbook (custom domain, auth, migrations)
+
+Live stack: **Vercel** (apps/web), **Supabase** (Postgres + auth), **Railway**
+(services/vsdx), **Resend** (auth email via custom SMTP), **PostHog** (analytics).
+This is the right architecture — don't move apps/web to Hostinger static/shared
+hosting (it's a full Next.js server app: SSR, API routes, auth). Hostinger is
+the domain registrar only.
+
+**Custom domain (in progress): `app.jactictservices.com`**
+- Added in Vercel → Settings → Domains; DNS is a `CNAME` `app → cname.vercel-dns.com`
+  in Hostinger. Vercel custom domains are FREE on Hobby — the "$10/mo per domain"
+  the founder saw was **Supabase's** custom-domain add-on (for the auth API
+  hostname), which is NOT needed; skip it.
+- **Required whenever the public URL changes** (or magic-link auth breaks with a
+  localhost/`?code=` redirect to the wrong host): Supabase → Authentication →
+  URL Configuration →
+  - **Site URL** = `https://app.jactictservices.com`
+  - **Redirect URLs** allow-list += `https://app.jactictservices.com/**`
+    (keep `https://<vercel-domain>/**` too if you want the raw Vercel URL to work).
+  Our code already sets `emailRedirectTo = ${origin}/auth/callback`; the localhost
+  redirect bug is always the Supabase Site URL / allow-list being stale, not code.
+
+**Migrations run against production Supabase so far:** 0002 (versions),
+0003 (rate limit), 0004 (waitlist). Run each new `supabase/migrations/*.sql`
+in the Supabase SQL editor after it lands.
+
+## Next step (diagram restyle to match the warm landing look) — DONE
+
+Founder feedback on the in-app project diagram: (1) two boxes in the bottom
+corners they disliked — those were React Flow's `Controls` (bottom-left
+toolbar) and `MiniMap` (bottom-right white rectangle); (2) it didn't match the
+new warm-editorial landing hero. Fixed both, styling only:
+- `DesignCanvas.tsx`: dropped `<Controls>` and `<MiniMap>`; the canvas is now a
+  cream (#f7f7f4) "artboard" with warm hairline dots, hairline edges, and mono
+  edge labels — committed warm (explicit hex, no `dark:` variants) so it looks
+  the same regardless of the viewer's OS theme, exactly like the hero.
+- `DeviceNode.tsx`: white cards with a 1px hairline (no shadow), monochrome
+  muted role icons, mono hostname + `role · zone` subtitle in ink/muted, and an
+  outline-hairline `HA` pill — the hero treatment applied to real nodes.
+- `role-meta.ts` left intact (roleRank/roleLabel still drive layout + subtitle);
+  the now-unused `roleAccent` color map is kept as dormant API rather than
+  deleted, in case colored roles are wanted back later.
+- Verified by rendering a composed G1 design through the real `DesignCanvas`
+  headlessly (throwaway preview route, since the canvas needs an authed page):
+  cream artboard, mono-labelled white nodes, no Controls/MiniMap, correct
+  hierarchy.
+
+Note: the rest of the authenticated app (projects list, new-project, the
+IP-Plan/Device-List/Assumptions tables, login) is still the default slate/dark
+theme — only the diagram + landing page are warm. A full warm rebrand of the
+signed-in app is a possible follow-up if the founder wants end-to-end
+consistency; not done here to keep this change scoped.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
