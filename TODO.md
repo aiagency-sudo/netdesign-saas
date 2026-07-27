@@ -904,6 +904,28 @@ the domain registrar only.
 0003 (rate limit), 0004 (waitlist). Run each new `supabase/migrations/*.sql`
 in the Supabase SQL editor after it lands.
 
+**Magic-link should be ONE email, not two (Supabase "Confirm email" setting).**
+Symptom: a new tester gets a "Confirm your email address" email, clicking it
+lands back on the login page, and only the *second* email ("Your sign-in link")
+actually signs them in. Cause: Supabase has **email confirmations ON**, so a
+brand-new address must confirm signup *before* the magic link works. For a
+passwordless/magic-link app this step is redundant — clicking a link sent to the
+address already proves ownership. **Fix (dashboard):** Authentication →
+Providers → Email (or Sign In/Up settings) → turn **OFF "Confirm email"**
+(a.k.a. "Enable email confirmations"). After that a new address gets a single
+"Your sign-in link" email that creates the account and signs in on click. Safe
+for magic-link auth (no password ⇒ no unconfirmed-account risk). No code change.
+
+**Where tester data lives:**
+- Waitlist emails → `public.waitlist` (Supabase → Table Editor → waitlist).
+- Signed-in tester accounts → Supabase-managed `auth.users` (Authentication →
+  Users).
+- Their projects/designs + version history → `public.projects` +
+  `public.project_versions`. Generation attempts → `public.generation_events`.
+- Product analytics (events/funnels) → **PostHog**, not Supabase.
+- Auth emails are *sent* via Resend (send logs in the Resend dashboard); the
+  addresses themselves persist in Supabase, not Resend.
+
 ## Next step (diagram restyle to match the warm landing look) — DONE
 
 Founder feedback on the in-app project diagram: (1) two boxes in the bottom
@@ -969,6 +991,120 @@ inside interfaces. The founder reviewed the full rendered G1 output line-by-line
 the cisco-ios sign-off.
 
 **Next vendor:** paloalto-panos (BUILD_PLAN Session 16), by tester vote.
+
+## SCOPING: campus / multi-tier composer (next big composer) — IN PROGRESS
+
+Why: branch-office/smb-flat only covers 1–2 routers + 1–4 access switches +
+0–1 firewall, flat single tier. Testers will ask for bigger, multi-tier campus
+designs; today those get simplified to flat + an Assumptions note (or a
+clarifying question). To let beta prove the product on real enterprise
+topologies, build the next composer. Maps to CLAUDE.md golden **G2 campus**
+(collapsed core, N access switches, wireless controller, voice VLAN).
+
+**Recommended first target: collapsed-core campus** (not full three-tier).
+A single L3 core pair does both core + distribution; access switches (L2)
+uplink to it; VLAN gateways (SVIs) live on the core pair with HSRP. This
+covers most mid-size campuses and is a clean, testable increment over
+branch-office. Full three-tier (separate distribution tier) can follow.
+
+**Proposed shape (collapsed-core):**
+```
+        WAN/Internet
+             │
+        [firewall]              (optional, reuse branch edge)
+             │
+      [router(s)]               (optional edge routing, reuse HSRP machinery)
+             │
+   ┌── core-01 ══ core-02 ──┐   L3 pair, HSRP SVIs = VLAN gateways
+   │      (peer link)       │
+ [acc-01] [acc-02] ... [acc-N]  L2 access, trunk uplinks to BOTH cores
+        (+ wireless-controller, voice VLAN)
+```
+
+**What needs to change:**
+1. **schema/designParams** (`packages/schema`): new `designPattern: "campus"`;
+   add `coreSwitch: { count (2 for HA), vendorHint }`, raise/relax
+   `accessSwitch.count` max (campus wants >4), optional
+   `wirelessController: { present, vendorHint }`. Bump schema version
+   deliberately (real prod design_json exists).
+2. **design-engine composer** (`packages/design-engine/src/compose/campus.ts`):
+   place core pair + N access switches; L2 trunks access→core; core↔core peer
+   link; SVIs (VLAN gateways) on the core pair. **Reuse the HSRP/`l3DeviceIds`
+   machinery already built for branch HSRP routers** — the core pair is exactly
+   the same "shared VLAN gateway = virtual IP, each L3 device gets its own
+   per-VLAN address" pattern, just on SVIs instead of router subinterfaces.
+3. **config-gen** (`packages/config-gen`): new cisco-ios **L3 core-switch**
+   template — global VLAN db + per-VLAN SVI with HSRP + L2 trunk uplinks +
+   (optionally) a routed uplink to the edge. Access-switch template already
+   works. FortiGate/edge unchanged.
+4. **llm-extraction** (`packages/llm-extraction`): add the `campus` pattern to
+   the prompt + 1–2 few-shot examples so intent extraction targets it instead
+   of simplifying to flat.
+5. **doc-gen / vsdx / diagram**: the role-tiered layout + HLD already handle
+   core-switch/distribution roles (roleRank has them); mostly free once devices
+   carry those roles.
+6. **Tests**: G2 golden fixture + compose/config-gen tests, same discipline as
+   G1/G4.
+
+**DECISIONS — LOCKED WITH FOUNDER (2026-07):**
+- **Full three-tier** (not collapsed core): access (L2) → distribution (L3) →
+  core (L3 transit) → edge.
+- **L2 access + HSRP SVI gateways.** Access switches are L2 with trunk uplinks
+  to BOTH distribution switches. VLAN gateways (SVIs) + HSRP live on the
+  **distribution** pair (standard textbook placement — resolved by me from the
+  collapsed-core-framed "SVIs on core" answer; flag at render-time review, same
+  as the FortiGate/cisco template sign-off).
+- **Routed core with OSPF.** distribution↔core and core↔edge are routed /31
+  links; OSPF area 0 across the L3 layers (reuses the engine's existing OSPF
+  view-model + config-gen plumbing). Resolved by me (founder declined the
+  follow-up) — flag at review.
+- **Reuse the branch edge:** optional FortiGate firewall + optional HSRP router
+  pair above the core, so it composes with the existing FortiGate/router
+  config-gen.
+- **Voice VLAN now** (already just purpose:voice), **wireless controller
+  deferred** to a follow-up.
+
+**Topology (first cut):**
+```
+[fw-01]                        optional edge firewall (reuse branch edge)
+   │
+[rtr-01 ══ rtr-02]             optional HSRP router pair (reuse)
+   │
+[core-01 ══ core-02]           L3 core pair, routed /31 to edge + each dist, OSPF
+   │   ╲   ╱   │
+[dist-01 ══ dist-02]           L3 dist pair: SVIs + HSRP = VLAN gateways, OSPF up
+   │              │
+[acc-01] [acc-02] ... [acc-N]  L2 access, trunk to BOTH dist switches
+```
+
+**Build order (each its own PR-sized increment, repo green between):**
+1. **schema-params** (`packages/schema`): add `"campus-three-tier"` to
+   `designParamsPatternSchema`; add optional `coreSwitch`/`distributionSwitch`
+   ({count, vendorHint}, default 2/2 HA pairs); raise `accessSwitch.count` max
+   (campus wants >4). NOTE the coupling: the params pattern enum feeds BOTH the
+   composer dispatch AND the LLM tool schema — so ship it together with the
+   composer + a dispatcher, or the LLM could emit campus before anything
+   composes it.
+2. **composer** (`packages/design-engine/src/compose/campus.ts` + a
+   `composeDesign(params)` dispatcher that routes by `designPattern`): build the
+   4 tiers; host VLAN segments carry `l3DeviceIds = [dist-01, dist-02]` (reuse
+   the HSRP SVI addressing already built for branch HSRP routers); all
+   inter-tier links are P2P /31 (reuse `allocateP2pLinks`); `routing.igp =
+   "ospf"`. Validate via `parseDesign`. **G2 golden compose test** (zero subnet
+   overlap, SVIs+HSRP on distribution, OSPF, etc.).
+3. **llm-extraction**: add the campus pattern to the prompt + 1–2 few-shot
+   examples so intent routes to campus (last, so users can trigger it).
+   → After this increment, campus **designs + diagram + HLD + .vsdx** all work
+     (role-driven). Config for the new L3 switch roles is skipped (like
+     FortiGate was initially), not errored.
+4. **config-gen** (follow-up): cisco-ios **distribution** template (VLAN db +
+   per-VLAN SVI with HSRP + OSPF + L2 trunk downlinks + routed /31 uplinks) and
+   **core** template (routed /31 + OSPF, no host SVIs). Founder reviews the
+   rendered G2 output line-by-line, same discipline as cisco-ios/FortiGate.
+
+Status: scoped + decisions locked; composer implementation is the next
+increment (not started — deliberately not rushed into a long session's tail;
+the design-engine is the moat and must stay bulletproof + green).
 
 ## Notes / decisions made without asking (boring-option calls)
 
