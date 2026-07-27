@@ -10,6 +10,30 @@ Put CLAUDE.md and design-schema.json at the repo root before your first session.
 
 ---
 
+## Progress against plan (what's actually shipped) — updated 2026-07
+
+Detailed session-by-session notes live in **TODO.md**; this is the at-a-glance
+roadmap view.
+
+- **Phase 0 — DONE.** schema + deterministic design-engine (IP allocation,
+  branch-office/smb-flat composers), .vsdx service (Railway), G1/G4 golden tests.
+- **Phase 1 (walking skeleton) — DONE.** Next.js app on Vercel, Supabase auth
+  (magic link) + Postgres, LLM intent extraction, live generate, IP-Plan/
+  Device-List/Assumptions tabs, .vsdx download, design versioning
+  (regenerate/restore), HLD (.docx) doc-gen, cisco-ios config-gen + Download
+  configs.
+- **Hardening — DONE.** Clarifying-question handling, per-user generation rate
+  limiting, PostHog analytics (funnels live), golden suite re-confirmed.
+- **Pulled forward from Phase 3:** the marketing **landing page + waitlist** and
+  a **warm editorial rebrand** (landing + in-app diagram) are built and live;
+  custom domain `app.jactictservices.com` wired (Vercel + Hostinger DNS + Resend
+  SMTP + Supabase auth URLs).
+- **Phase 2 vendor rollout — fortinet-fortigate DONE (ahead of schedule),
+  founder-reviewed.** paloalto-panos still pending (see Session 16 below).
+- **Next up:** Phase 2 beta recruiting + watch the PostHog funnels.
+
+---
+
 ## PHASE 0 — Prove the moat (Week 1–2, ~4 sessions)
 Goal: prompt → design JSON → .vsdx that opens cleanly. No UI. If this fails,
 stop and rethink — you will have spent 2 weeks, not 6 months.
@@ -79,6 +103,10 @@ Goal: 15–30 testers; brutal feedback; the config feature validated.
   "Add fortinet-fortigate and paloalto-panos template sets to config-gen,
   same test discipline as cisco-ios. Map neutral interface names correctly
   (port1, ethernet1/1)."
+  * **fortinet-fortigate — DONE** (edge firewall base config: WAN as DHCP
+    client, static inside ports, ECMP static routes to each VLAN subnet via
+    both HSRP routers, no policies; founder-reviewed the rendered G1 output).
+  * paloalto-panos — pending (next vendor).
 - BETA EXIT CRITERIA (do not charge money before these):
   * ≥70% of testers: vsdx opens cleanly, ≤15 min cleanup
   * ≥50% of testers who downloaded a config say it's a usable starting point
