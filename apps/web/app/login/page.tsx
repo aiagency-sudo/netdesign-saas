@@ -14,10 +14,17 @@ export default function LoginPage() {
     setStatus("sending");
     setError(null);
 
+    // Preserve a ?next= destination (e.g. the landing-page CTA sends
+    // ?next=/projects/new) through the magic link so the user lands on the
+    // intended page after sign-in. Read from window (not useSearchParams) to
+    // avoid forcing a Suspense boundary on this otherwise-static page.
+    const next = new URLSearchParams(window.location.search).get("next");
+    const callback = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: callback },
     });
 
     if (signInError) {

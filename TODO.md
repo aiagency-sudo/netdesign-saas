@@ -832,6 +832,52 @@ today's needs. When a zone-aware composer lands (e.g. a real DMZ design,
 G5), revisit whether to bring back swimlane/backdrop grouping; the role
 tiers and badge are the interim.
 
+## Next step (pre-beta: live-funnel landing page + waitlist) — DONE
+
+Before Phase 2 recruiting, built a marketing landing page at `/` so the same
+traffic that recruiting posts drive gives both interest metrics and an
+activation funnel. Chose the live-funnel version over a fake-door/waitlist-only
+page — the product already works, so the CTA routes into the real sign-in →
+generate flow, and PostHog captures `landing view → CTA click → sign-in →
+first design` end to end. A waitlist section captures people not ready to sign
+up.
+
+- `app/page.tsx`: was a bare redirect (anon → /login); now renders the landing
+  for anonymous visitors (signed-in users still redirect to /projects). Hero +
+  "how it works" + deliverables + waitlist + footer.
+- `components/landing/HeroDiagram.tsx`: static inline SVG mock of a role-tiered
+  topology (Internet → firewall → HSRP router pair w/ HA badges → switches),
+  mirroring the real in-app diagram's tiers/colors without pulling React Flow
+  into the hero.
+- `components/landing/TryFreeButton.tsx`: captures `landing_cta_clicked`
+  (with a `location` prop) then routes to `/login?next=/projects/new`.
+- `components/landing/WaitlistForm.tsx`: POSTs to `/api/waitlist`, captures
+  `waitlist_joined` client-side (same person as the pageview, so the funnel
+  stays on one profile).
+- `app/api/waitlist/route.ts`: public POST, zod-validates email, inserts;
+  treats a unique-violation (23505) as success ("already on the list").
+- `supabase/migrations/0004_waitlist.sql`: `waitlist` table, case-insensitive
+  unique email index, RLS allowing anon/authenticated INSERT but NO select
+  policy (founder reads via dashboard/service role).
+- `lib/supabase/middleware.ts`: added `/api/waitlist` to PUBLIC_PATHS so
+  anonymous visitors can submit (otherwise the auth gate 307s it to /login).
+- `app/login/page.tsx`: now forwards a `?next=` param through the magic link
+  (read from `window.location.search` to avoid a Suspense boundary), so the
+  CTA lands the user on /projects/new after sign-in. `auth/callback` already
+  honored `next`.
+- `lib/supabase/types.ts`: added the `waitlist` table shape.
+
+Verified: full `pnpm run build` + `lint` + web `typecheck` green; landing page
+rendered headlessly (200, no console errors, all sections, hero diagram
+correct); `/api/waitlist` confirmed reachable anonymously (not redirected) and
+rejecting bad email with 400; "Try it free" confirmed navigating to
+`/login?next=/projects/new`.
+
+**Founder action needed**: run `supabase/migrations/0004_waitlist.sql` against
+the production Supabase project (same SQL-editor step as prior migrations)
+before the waitlist form works live. The rest deploys with the normal Vercel
+push.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
