@@ -2,9 +2,9 @@ import type { Design } from "@netdesign/schema";
 
 /**
  * Hand-maintained mirror of supabase/migrations/0001_init.sql +
- * 0002_project_versions.sql + 0003_generation_rate_limit.sql.
- * projects.design_json/prompt stay a denormalized copy of whichever
- * project_versions row is "current" (current_version_id) — see
+ * 0002_project_versions.sql + 0003_generation_rate_limit.sql +
+ * 0004_waitlist.sql. projects.design_json/prompt stay a denormalized copy of
+ * whichever project_versions row is "current" (current_version_id) — see
  * 0002_project_versions.sql for why.
  */
 export interface Database {
@@ -64,6 +64,22 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["generation_events"]["Insert"]>;
+        Relationships: [];
+      };
+      waitlist: {
+        Row: {
+          id: string;
+          email: string;
+          source: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          source?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["waitlist"]["Insert"]>;
         Relationships: [];
       };
     };

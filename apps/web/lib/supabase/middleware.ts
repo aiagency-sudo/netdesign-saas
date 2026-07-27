@@ -3,7 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./types";
 import { supabaseEnv } from "./env";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+// "/" (the marketing landing page) is handled by the explicit pathname check
+// below; /api/waitlist must be reachable by anonymous landing-page visitors.
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/api/waitlist"];
 
 /**
  * Refreshes the Supabase session cookie on every request and gates the
