@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import nunjucks from "nunjucks";
 import type { Design, Device } from "@netdesign/schema";
 import { buildRouterView, buildSwitchView } from "./view-models.js";
+import { buildFortiGateView } from "./fortigate-view.js";
 
 const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "templates");
 
@@ -31,6 +32,26 @@ export function renderCiscoIosConfig(device: Device, design: Design): string {
 }
 
 /**
+ * Renders one device's fortinet-fortigate base config — templates only, no
+ * LLM at render time. Only the "firewall" role is supported (the only
+ * fortigate-capable role this composer produces). Interfaces + ECMP routing;
+ * no firewall policies (see buildFortiGateView).
+ */
+export function renderFortiGateConfig(device: Device, design: Design): string {
+  if (device.vendorHint !== "fortinet-fortigate") {
+    throw new UnsupportedDeviceError(
+      `renderFortiGateConfig only supports vendorHint "fortinet-fortigate", got "${device.vendorHint}" for device "${device.id}".`,
+    );
+  }
+  if (device.role === "firewall") {
+    return env.render("fortinet-fortigate/firewall.njk", buildFortiGateView(device, design));
+  }
+  throw new UnsupportedDeviceError(
+    `renderFortiGateConfig has no fortinet-fortigate template for role "${device.role}" (device "${device.id}").`,
+  );
+}
+
+/**
  * Renders every device in a design that has both a cisco-ios vendorHint and
  * a supported role. Devices outside that (e.g. this design's Fortinet
  * firewall) are silently skipped, not errored — config-gen only generates
@@ -42,6 +63,8 @@ export function renderAllConfigs(design: Design): Record<string, string> {
   for (const device of design.devices) {
     if (device.vendorHint === "cisco-ios" && (device.role === "router" || device.role === "access-switch")) {
       configs[device.id] = renderCiscoIosConfig(device, design);
+    } else if (device.vendorHint === "fortinet-fortigate" && device.role === "firewall") {
+      configs[device.id] = renderFortiGateConfig(device, design);
     }
   }
   return configs;

@@ -1,0 +1,31 @@
+{{ banner }}
+config system global
+    set hostname "{{ hostname }}"
+end
+config system interface
+{% for iface in interfaces %}
+    edit "{{ iface.name }}"
+        set alias "{{ iface.alias }}"
+{% if iface.mode == "dhcp" %}
+        set mode dhcp
+{% else %}
+        set mode static
+        set ip {{ iface.ip }} {{ iface.netmask }}
+{% if iface.allowaccess %}
+        set allowaccess {{ iface.allowaccess }}
+{% endif %}
+{% endif %}
+    next
+{% endfor -%}
+end
+{% if staticRoutes.length %}
+config router static
+{% for route in staticRoutes %}
+    edit {{ route.seq }}
+        set dst {{ route.dst }} {{ route.netmask }}
+        set gateway {{ route.gateway }}
+        set device "{{ route.device }}"
+    next
+{% endfor -%}
+end
+{% endif -%}
