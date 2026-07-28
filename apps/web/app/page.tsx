@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { HeroDiagram } from "@/components/landing/HeroDiagram";
+import { HeroShowcase } from "@/components/landing/HeroShowcase";
 import { TryFreeButton } from "@/components/landing/TryFreeButton";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
 
@@ -89,20 +89,8 @@ export default async function Home() {
             </div>
           </div>
 
-          {/* IDE-style mockup card holding the topology */}
-          <div className="overflow-hidden rounded-xl border border-[#e6e5e0] bg-white">
-            <div className="flex items-center gap-2 border-b border-[#efeee8] bg-[#fafaf7] px-4 py-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#e6e5e0]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#e6e5e0]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#e6e5e0]" />
-              <span className="ml-2 text-[12px] text-[#807d72]" style={{ fontFamily: MONO }}>
-                branch-office.design
-              </span>
-            </div>
-            <div className="p-6">
-              <HeroDiagram />
-            </div>
-          </div>
+          {/* IDE-style mockup card holding the topology, with a pattern switcher */}
+          <HeroShowcase />
         </section>
 
         {/* How it works */}
