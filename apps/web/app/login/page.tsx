@@ -39,7 +39,7 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="mb-2 text-2xl font-semibold">NetDesign AI</h1>
+      <h1 className="mb-2 text-2xl font-semibold">NetDesign.app</h1>
       <p className="mb-6 text-sm text-slate-500">Sign in with a magic link — no password needed.</p>
 
       {status === "sent" ? (

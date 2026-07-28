@@ -1,4 +1,4 @@
-# NetDesign AI — Step-by-Step Build Plan (20 hrs/week, Claude Code as the engine)
+# NetDesign.app — Step-by-Step Build Plan (20 hrs/week, Claude Code as the engine)
 
 Each "session" = one 2–3 hour block. Prompts in quotes are literal — paste them
 into Claude Code. Weekend blocks are for testing against real tools (Visio,

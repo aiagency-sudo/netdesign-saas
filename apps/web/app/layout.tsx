@@ -4,7 +4,7 @@ import { PostHogIdentify } from "@/components/PostHogIdentify";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NetDesign AI",
+  title: "NetDesign.app",
   description: "Natural-language network requirements to a validated design.",
 };
 
