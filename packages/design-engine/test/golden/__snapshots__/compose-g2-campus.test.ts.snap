@@ -642,7 +642,6 @@ exports[`golden G2 campus-three-tier — full design composition > matches the r
       {
         "area": "0",
         "deviceIds": [
-          "fw-01",
           "rtr-01",
           "rtr-02",
           "core-01",

@@ -132,10 +132,14 @@ export function composeCampusDesign(params: DesignParams): Design {
     };
   });
 
-  // OSPF area 0 across every L3 device (edge routers, core, distribution).
+  // OSPF area 0 across the L3 routing core (edge routers, core, distribution).
+  // The firewall is deliberately NOT an OSPF speaker: the FortiGate edge runs
+  // static/ECMP routing (see config-gen's fortigate-view), so the edge routers
+  // treat their firewall-facing link as a passive OSPF interface — the subnet
+  // is advertised, but no adjacency is attempted toward the firewall.
   const ospfDeviceIds = managedDeviceIds.filter((id) => {
     const role = mustGet(roleById, id, "device role");
-    return role === "router" || role === "core-switch" || role === "distribution-switch" || role === "firewall";
+    return role === "router" || role === "core-switch" || role === "distribution-switch";
   });
 
   const rawDesign = {

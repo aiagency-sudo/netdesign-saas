@@ -39,6 +39,9 @@ interface {{ port.name }}
 {% endfor -%}
 {% if ospf %}
 router ospf {{ ospf.processId }}
+{% for iface in ospf.passiveInterfaces %}
+ passive-interface {{ iface }}
+{% endfor -%}
 {% for net in ospf.networks %}
  network {{ net.network }} {{ net.wildcard }} area {{ net.area }}
 {% endfor -%}

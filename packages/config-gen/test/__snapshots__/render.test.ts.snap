@@ -428,6 +428,8 @@ interface GigabitEthernet0/4
  no shutdown
 !
 router ospf 1
+ passive-interface Vlan10
+ passive-interface Vlan20
  network 10.20.1.5 0.0.0.0 area 0
  network 10.20.1.22 0.0.0.1 area 0
  network 10.20.1.24 0.0.0.1 area 0
@@ -496,6 +498,8 @@ interface GigabitEthernet0/4
  no shutdown
 !
 router ospf 1
+ passive-interface Vlan10
+ passive-interface Vlan20
  network 10.20.1.6 0.0.0.0 area 0
  network 10.20.1.26 0.0.0.1 area 0
  network 10.20.1.28 0.0.0.1 area 0
@@ -569,6 +573,7 @@ interface GigabitEthernet0/2
  no shutdown
 !
 router ospf 1
+ passive-interface GigabitEthernet0/0
  network 10.20.1.1 0.0.0.0 area 0
  network 10.20.1.8 0.0.0.1 area 0
  network 10.20.1.12 0.0.0.1 area 0
@@ -599,6 +604,7 @@ interface GigabitEthernet0/2
  no shutdown
 !
 router ospf 1
+ passive-interface GigabitEthernet0/0
  network 10.20.1.2 0.0.0.0 area 0
  network 10.20.1.10 0.0.0.1 area 0
  network 10.20.1.16 0.0.0.1 area 0

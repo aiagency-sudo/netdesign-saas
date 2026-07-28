@@ -1146,18 +1146,17 @@ VLANs/SVIs/trunks). Also:
   `core-switch`; **G2 config snapshot + assertions** added (SVIs+HSRP on dist,
   pure-L3 core, L2 access, default-origination on edge). Full config-gen suite green.
 
-**Founder review checklist for the rendered G2 configs (still my calls, need sign-off):**
-1. SVIs+HSRP on **distribution** (textbook placement).
-2. **OSPF area 0** across all L3 layers (single-area; fine for this size).
-3. HSRP priorities: alphabetically-first device = active (110), others standby (100).
-4. **Refinements deliberately NOT done** (flag if wanted): (a) `passive-interface`
-   on the router's firewall-facing link (it currently sends OSPF hellos toward the
-   FortiGate, which speaks static/ECMP not OSPF — harmless but noisy); (b) the
-   composer lists the firewall in `routing.ospfAreas` area 0, but the FortiGate
-   template renders static/ECMP, not OSPF — reconcile by either making the edge
-   routers' firewall link passive (recommended) or dropping the firewall from the
-   OSPF device list. Either is a small follow-up once you confirm the intended edge
-   routing contract.
+**Campus design contract — CONFIRMED WITH FOUNDER (2026-07), now locked + implemented:**
+1. SVIs+HSRP on **distribution** (textbook placement). ✅
+2. **OSPF area 0** across the L3 routing core (single-area). ✅
+3. HSRP: **alphabetically-first device = active (priority 110)**, others standby (100). ✅
+4. **Firewall is NOT an OSPF speaker** — the FortiGate runs static/ECMP, so it's
+   dropped from `routing.ospfAreas`, and the edge routers mark their firewall-facing
+   link **`passive-interface`** (subnet advertised, no adjacency attempted). ✅
+   Distribution **SVIs are passive too** (they face L2 access/hosts, never an OSPF
+   neighbor). Implemented via `buildOspfForDevice`'s speaker-set check +
+   `ospfSpeakerIds`/`peerDeviceIdOf` helpers; G2 compose + config snapshots and
+   assertions updated. Full suite green.
 
 ## BACKLOG (future add-on): sketch upload → rebuilt design — NOT STARTED
 

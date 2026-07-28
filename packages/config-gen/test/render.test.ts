@@ -129,6 +129,29 @@ describe("renderAllConfigs — G2 campus-three-tier (L3 fabric)", () => {
     }
   });
 
+  it("marks the edge router's firewall-facing link passive (the FortiGate isn't an OSPF speaker), but not the core uplinks", () => {
+    const rtr01 = configs["rtr-01"]!;
+    // eth0/0 is the firewall uplink -> GigabitEthernet0/0.
+    expect(rtr01).toContain("passive-interface GigabitEthernet0/0");
+    // The core uplinks (eth0/1, eth0/2) form adjacencies, so they are NOT passive.
+    expect(rtr01).not.toContain("passive-interface GigabitEthernet0/1");
+    expect(rtr01).not.toContain("passive-interface GigabitEthernet0/2");
+  });
+
+  it("marks the distribution SVIs passive (they face L2 access/hosts, never an OSPF neighbor)", () => {
+    const dist01 = configs["dist-01"]!;
+    expect(dist01).toContain("passive-interface Vlan10");
+    expect(dist01).toContain("passive-interface Vlan20");
+    // Its routed uplinks to the core are NOT passive.
+    expect(dist01).not.toContain("passive-interface GigabitEthernet0/0");
+  });
+
+  it("makes no core interface passive — every core neighbor is an OSPF speaker", () => {
+    for (const id of ["core-01", "core-02"]) {
+      expect(configs[id]!).not.toContain("passive-interface");
+    }
+  });
+
   it("keeps access switches L2-only: VLAN db + trunks, no routing", () => {
     const acc01 = configs["acc-01"]!;
     expect(acc01).toContain("vlan 10\n name corp-data");

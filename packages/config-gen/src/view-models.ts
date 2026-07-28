@@ -27,6 +27,8 @@ export interface RouterTrunkView {
 export interface RouterOspfView {
   processId: number;
   networks: Array<{ network: string; wildcard: string; area: string }>;
+  /** Interfaces whose subnet is advertised into OSPF but that must not form an adjacency — the peer isn't an OSPF speaker (e.g. an edge router's firewall link, or a distribution SVI facing L2 access). */
+  passiveInterfaces: string[];
 }
 
 export interface RouterView {
@@ -138,13 +140,44 @@ function buildOspfForDevice(device: Device, design: Design): RouterOspfView | nu
     }
   };
 
+  // An interface is passive if its subnet is in OSPF but its peer doesn't speak
+  // OSPF — hellos there would go unanswered (an edge router's firewall link).
+  const speakers = ospfSpeakerIds(design);
+  const passiveInterfaces: string[] = [];
+
   if (device.loopback) addNetwork(device.loopback);
   for (const iface of device.interfaces ?? []) {
-    if (iface.ip && !iface.trunk) addNetwork(iface.ip);
+    if (iface.ip && !iface.trunk) {
+      addNetwork(iface.ip);
+      const peerId = peerDeviceIdOf(device.id, iface.name, design);
+      if (peerId && !speakers.has(peerId)) {
+        passiveInterfaces.push(toCiscoInterfaceName(iface.name));
+      }
+    }
     for (const svi of iface.svis ?? []) addNetwork(svi.ip);
   }
 
-  return { processId: 1, networks };
+  return { processId: 1, networks, passiveInterfaces };
+}
+
+/** The set of device ids that actually run OSPF (the union of `routing.ospfAreas[].deviceIds`) — used to decide which interfaces should be passive. */
+function ospfSpeakerIds(design: Design): Set<string> {
+  const ids = new Set<string>();
+  for (const area of design.routing?.ospfAreas ?? []) {
+    for (const id of area.deviceIds ?? []) ids.add(id);
+  }
+  return ids;
+}
+
+/** The device on the far end of `deviceId`'s interface `ifaceName`, or null if that interface isn't a modeled link endpoint. */
+function peerDeviceIdOf(deviceId: string, ifaceName: string, design: Design): string | null {
+  for (const link of design.links) {
+    const [aId, aIface] = splitEndpoint(link.a);
+    const [bId, bIface] = splitEndpoint(link.b);
+    if (aId === deviceId && aIface === ifaceName) return bId;
+    if (bId === deviceId && bIface === ifaceName) return aId;
+  }
+  return null;
 }
 
 /** Finds the IP of whichever P2P-linked peer has role "firewall" — this composer's topology always routes a site's default route through its edge firewall, never directly out a router interface. */
@@ -278,6 +311,13 @@ export function buildDistributionSwitchView(device: Device, design: Design): Dis
       allowedVlans: (iface.allowedVlans ?? []).join(","),
     }));
 
+  // The SVIs face the L2 access layer (hosts), never an OSPF neighbor, so they
+  // advertise their subnet but stay passive — no OSPF hellos toward end users.
+  const ospf = buildOspfForDevice(device, design);
+  if (ospf) {
+    ospf.passiveInterfaces.push(...svis.map((svi) => `Vlan${svi.vlanId}`));
+  }
+
   return {
     banner: BANNER,
     hostname: device.hostname ?? device.id,
@@ -285,7 +325,7 @@ export function buildDistributionSwitchView(device: Device, design: Design): Dis
     svis,
     routedPorts,
     trunkPorts,
-    ospf: buildOspfForDevice(device, design),
+    ospf,
   };
 }
 
