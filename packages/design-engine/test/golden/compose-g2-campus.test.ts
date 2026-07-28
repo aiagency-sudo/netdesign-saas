@@ -86,6 +86,19 @@ describe("golden G2 campus-three-tier — full design composition", () => {
     }
   });
 
+  it("dual-homes every access switch to BOTH distribution switches (two trunk uplinks each)", () => {
+    const distIds = new Set(design.devices.filter((d) => d.role === "distribution-switch").map((d) => d.id));
+    for (const acc of design.devices.filter((d) => d.role === "access-switch")) {
+      // Collect the peer device on every link this access switch participates in.
+      const peers = design.links
+        .filter((l) => l.a.startsWith(`${acc.id}:`) || l.b.startsWith(`${acc.id}:`))
+        .map((l) => (l.a.startsWith(`${acc.id}:`) ? l.b : l.a).split(":")[0]!);
+      // Exactly the two distribution switches, no more, no fewer.
+      expect(new Set(peers)).toEqual(distIds);
+      expect(peers).toHaveLength(2);
+    }
+  });
+
   it("keeps access switches L2-only: their interfaces are trunks with no IPs and no SVIs", () => {
     const access = design.devices.filter((d) => d.role === "access-switch");
     for (const acc of access) {

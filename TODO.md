@@ -1139,6 +1139,53 @@ discipline as cisco-ios/FortiGate. Two design decisions were resolved by me and
 still need a render-time sign-off: (a) SVIs+HSRP on **distribution** (textbook),
 (b) **OSPF area 0** across the L3 layers.
 
+## BACKLOG (future add-on): sketch upload → rebuilt design — NOT STARTED
+
+**Goal:** let an engineer upload a rough network sketch (hand-drawn photo,
+whiteboard shot, or a Visio/draw.io/PNG export) and have the tool infer the
+topology, then run it through the *existing* deterministic pipeline —
+producing IP addressing, VLANs, validation, diagram, HLD, .vsdx, and base
+configs, exactly like the prose path. Founder explicitly wants this kept on
+the roadmap (2026-07).
+
+**Why it fits cleanly:** it's just a new *front door* to the same pipeline.
+Claude is multimodal, so the sketch → `design-params` step is the vision
+analogue of the prose → `design-params` extraction we already have. The moat
+(design-engine) is untouched — the LLM still only *proposes* params; the
+engine still disposes (IP math, no overlaps, schema-validate). Same hard
+rules apply.
+
+**Build order (each a PR-sized, repo-green increment):**
+1. **vision extraction** (`packages/llm-extraction`): a new
+   `extractDesignParamsFromImage(image, options)` that sends the image to
+   Claude with the *same* `emit_design_params` / `ask_clarifying_questions`
+   tool contract, plus a vision-specific system prompt + a couple of
+   sketch→params few-shot pairs. Reuses `designParamsSchema` and the existing
+   `generateDesign` composer dispatch — output is identical to the prose path.
+2. **assumptions/confidence review step** (critical): a sketch is lossy, so
+   the extractor must surface *everything it inferred* (device counts, roles,
+   redundancy, VLANs, which pattern) into `assumptions`, and the UI must show
+   an editable confirmation screen BEFORE composing. Never silently commit a
+   guessed topology. Low-confidence or unreadable input → route to
+   `ask_clarifying_questions`, same as ambiguous prose.
+3. **upload UI + storage** (`apps/web`): an image dropzone on the new-project
+   flow (accept png/jpg/pdf, size cap), store the original in Supabase storage
+   (private bucket, owner-scoped), a new `/api/generate-from-sketch` route.
+   Rate-limit + PostHog-instrument the same as `/api/generate`.
+4. **tests**: fixtures of a few representative sketches → expected params;
+   golden that a sketch maps onto a G1/G2/G4 design; assert the review step
+   blocks auto-compose when confidence is low.
+
+**Open questions to settle with founder before building:**
+- Accepted input formats (photos only, or also structured Visio/draw.io XML —
+  the latter is parseable, not a vision problem, and much higher fidelity).
+- How much the tool should *correct* vs. *faithfully reproduce* a sketch
+  (e.g. add HSRP the sketch omitted?) — a networking judgment call.
+- Pricing/quota (vision tokens cost more than text).
+
+**Sequencing:** AFTER beta launches on the solid prose → branch/SMB flow, so
+real tester feedback shapes the confidence/review UX (the make-or-break part).
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own

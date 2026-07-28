@@ -57,7 +57,7 @@ function CampusDiagram() {
     <svg
       viewBox="0 0 420 320"
       role="img"
-      aria-label="Campus three-tier topology: firewall, L3 core pair, HSRP distribution pair as VLAN gateways, three access switches"
+      aria-label="Campus three-tier topology: firewall, L3 core pair, HSRP distribution pair as VLAN gateways, three access switches each dual-homed to both distribution switches"
       className="h-auto w-full"
     >
       <g stroke={HAIRLINE} strokeWidth="1.25">
@@ -75,11 +75,14 @@ function CampusDiagram() {
         <line x1="270" y1="156" x2="150" y2="192" />
         {/* dist peer (HSRP) */}
         <line x1="150" y1="210" x2="270" y2="210" strokeDasharray="3 4" />
-        {/* dists -> access (L2 trunks, dual-homed) */}
-        <line x1="150" y1="228" x2="90" y2="264" />
-        <line x1="150" y1="228" x2="210" y2="264" />
-        <line x1="270" y1="228" x2="210" y2="264" />
-        <line x1="270" y1="228" x2="330" y2="264" />
+        {/* dists -> access: every access switch dual-homed to BOTH distribution
+            switches (L2 trunks; STP selects the root port and blocks the secondary) */}
+        <line x1="150" y1="224" x2="90" y2="264" />
+        <line x1="150" y1="224" x2="210" y2="264" />
+        <line x1="150" y1="224" x2="330" y2="264" />
+        <line x1="270" y1="224" x2="90" y2="264" />
+        <line x1="270" y1="224" x2="210" y2="264" />
+        <line x1="270" y1="224" x2="330" y2="264" />
       </g>
 
       <Cloud cx={210} cy={24} label="internet" rx={40} ry={17} />
