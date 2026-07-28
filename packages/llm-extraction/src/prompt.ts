@@ -155,7 +155,7 @@ function formatExample(example: FewShotExample, index: number): string {
   return `Example ${index + 1}:\nUser: "${example.prose}"\nExpected ${TOOL_NAME} input:\n${JSON.stringify(example.params, null, 2)}`;
 }
 
-export const SYSTEM_PROMPT = `You are the intent-extraction stage of NetDesign AI. Read the user's network \
+export const SYSTEM_PROMPT = `You are the intent-extraction stage of NetDesign.app. Read the user's network \
 requirements prose and call one of two tools — never write config, never invent IP addresses (the design \
 engine assigns those deterministically).
 

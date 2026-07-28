@@ -50,7 +50,7 @@ export default function NewProjectPage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-2 text-2xl font-semibold">Describe your network</h1>
       <p className="mb-6 text-sm text-slate-500">
-        Plain English is fine — routers, switches, firewalls, VLANs, redundancy. NetDesign AI turns it into a
+        Plain English is fine — routers, switches, firewalls, VLANs, redundancy. NetDesign.app turns it into a
         validated design.
       </p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">

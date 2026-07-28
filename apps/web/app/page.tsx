@@ -50,7 +50,7 @@ export default async function Home() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-[3px] bg-[#f54e00]" aria-hidden />
-            <span className="text-[15px] font-medium tracking-tight">NetDesign AI</span>
+            <span className="text-[15px] font-medium tracking-tight">NetDesign.app</span>
           </div>
           <a href="/login" className="text-sm font-medium text-[#5a5852] hover:text-[#26251e]">
             Sign in
@@ -172,7 +172,7 @@ export default async function Home() {
 
       <footer className="border-t border-[#e6e5e0]">
         <div className="mx-auto max-w-6xl px-6 py-8 text-center text-[13px] text-[#807d72]">
-          NetDesign AI — base configurations are a starting point; validate in a lab before production.
+          NetDesign.app — base configurations are a starting point; validate in a lab before production.
         </div>
       </footer>
     </div>
