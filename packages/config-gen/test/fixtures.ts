@@ -1,4 +1,4 @@
-import { composeBranchOfficeDesign } from "@netdesign/design-engine";
+import { composeBranchOfficeDesign, composeDesign } from "@netdesign/design-engine";
 import { designParamsSchema } from "@netdesign/schema";
 
 /**
@@ -36,6 +36,25 @@ export const g4Design = composeBranchOfficeDesign(
     vlans: [
       { name: "corp", purpose: "user", dhcp: true },
       { name: "guest", purpose: "guest", dhcp: true },
+    ],
+  }),
+);
+
+export const g2Design = composeDesign(
+  designParamsSchema.parse({
+    designPattern: "campus-three-tier",
+    siteName: "G2 Campus",
+    intentSummary:
+      "Three-tier campus: HSRP edge routers behind a firewall, a pure-L3 core pair, an HSRP distribution pair as VLAN gateways, and three L2 access switches serving corp-data and voice.",
+    siteSupernet: "10.20.0.0/16",
+    router: { count: 2, redundancy: "hsrp", vendorHint: "cisco-ios" },
+    accessSwitch: { count: 3, vendorHint: "cisco-ios" },
+    firewall: { present: true, vendorHint: "fortinet-fortigate" },
+    coreSwitch: { count: 2, vendorHint: "cisco-ios" },
+    distributionSwitch: { count: 2, vendorHint: "cisco-ios" },
+    vlans: [
+      { name: "corp-data", purpose: "user", dhcp: true },
+      { name: "voice", purpose: "voice", dhcp: true },
     ],
   }),
 );

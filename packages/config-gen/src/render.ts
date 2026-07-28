@@ -2,7 +2,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import nunjucks from "nunjucks";
 import type { Design, Device } from "@netdesign/schema";
-import { buildRouterView, buildSwitchView } from "./view-models.js";
+import {
+  buildCoreSwitchView,
+  buildDistributionSwitchView,
+  buildRouterView,
+  buildSwitchView,
+} from "./view-models.js";
 import { buildFortiGateView } from "./fortigate-view.js";
 
 const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "templates");
@@ -13,8 +18,9 @@ export class UnsupportedDeviceError extends Error {}
 
 /**
  * Renders one device's cisco-ios base config — templates only, no LLM at
- * render time, per CLAUDE.md's hard rule. Only "router" and "access-switch"
- * roles are supported today (this composer's only cisco-ios-capable roles).
+ * render time, per CLAUDE.md's hard rule. Supported roles: "router" and
+ * "access-switch" (branch/SMB) plus "distribution-switch" and "core-switch"
+ * (the campus three-tier L3 fabric).
  */
 export function renderCiscoIosConfig(device: Device, design: Design): string {
   if (device.vendorHint !== "cisco-ios") {
@@ -27,6 +33,12 @@ export function renderCiscoIosConfig(device: Device, design: Design): string {
   }
   if (device.role === "access-switch") {
     return env.render("cisco-ios/access-switch.njk", buildSwitchView(device, design));
+  }
+  if (device.role === "distribution-switch") {
+    return env.render("cisco-ios/distribution-switch.njk", buildDistributionSwitchView(device, design));
+  }
+  if (device.role === "core-switch") {
+    return env.render("cisco-ios/core-switch.njk", buildCoreSwitchView(device, design));
   }
   throw new UnsupportedDeviceError(`renderCiscoIosConfig has no cisco-ios template for role "${device.role}" (device "${device.id}").`);
 }
@@ -58,10 +70,12 @@ export function renderFortiGateConfig(device: Device, design: Design): string {
  * configs for vendors/roles it actually has templates for; other vendors
  * are future work (CLAUDE.md's vendor rollout order), not a failure.
  */
+const CISCO_IOS_ROLES = new Set<Device["role"]>(["router", "access-switch", "distribution-switch", "core-switch"]);
+
 export function renderAllConfigs(design: Design): Record<string, string> {
   const configs: Record<string, string> = {};
   for (const device of design.devices) {
-    if (device.vendorHint === "cisco-ios" && (device.role === "router" || device.role === "access-switch")) {
+    if (device.vendorHint === "cisco-ios" && CISCO_IOS_ROLES.has(device.role)) {
       configs[device.id] = renderCiscoIosConfig(device, design);
     } else if (device.vendorHint === "fortinet-fortigate" && device.role === "firewall") {
       configs[device.id] = renderFortiGateConfig(device, design);

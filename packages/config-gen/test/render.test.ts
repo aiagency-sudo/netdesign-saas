@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { UnsupportedDeviceError, renderAllConfigs, renderCiscoIosConfig } from "../src/render.js";
-import { g1Design, g4Design } from "./fixtures.js";
+import { g1Design, g2Design, g4Design } from "./fixtures.js";
 
 describe("renderAllConfigs — G1 branch-office (dual HSRP)", () => {
   const configs = renderAllConfigs(g1Design);
@@ -73,6 +73,71 @@ describe("renderAllConfigs — G4 smb-flat (single router, no redundancy)", () =
   });
 });
 
+describe("renderAllConfigs — G2 campus-three-tier (L3 fabric)", () => {
+  const configs = renderAllConfigs(g2Design);
+
+  it("matches the recorded snapshot for every cisco-ios device", () => {
+    expect(configs).toMatchSnapshot();
+  });
+
+  it("renders a config for every campus device: firewall, edge routers, core + distribution + access switches", () => {
+    expect(Object.keys(configs).sort()).toEqual([
+      "acc-01", "acc-02", "acc-03", "core-01", "core-02", "dist-01", "dist-02", "fw-01", "rtr-01", "rtr-02",
+    ]);
+  });
+
+  it("puts the VLAN gateways (SVIs) with HSRP on the distribution switches", () => {
+    const dist01 = configs["dist-01"]!;
+    const dist02 = configs["dist-02"]!;
+    // The SVI IS the gateway: dist-01 owns .2, dist-02 owns .3, both standby on the shared virtual .1.
+    expect(dist01).toContain("interface Vlan10\n ip address 10.20.2.2 255.255.255.0");
+    expect(dist02).toContain("interface Vlan10\n ip address 10.20.2.3 255.255.255.0");
+    expect(dist01).toContain("standby 10 ip 10.20.2.1");
+    expect(dist02).toContain("standby 10 ip 10.20.2.1");
+    // Deterministic active/standby: dist-01 (alphabetically first) is active.
+    expect(dist01).toContain("standby 10 priority 110");
+    expect(dist02).toContain("standby 10 priority 100");
+    // L3 switch: routing enabled, and it runs OSPF advertising its SVI subnets.
+    expect(dist01).toContain("ip routing");
+    expect(dist01).toContain("network 10.20.2.0 0.0.0.255 area 0");
+  });
+
+  it("carries the access-facing downlinks as L2 trunks on the distribution switches", () => {
+    const dist01 = configs["dist-01"]!;
+    expect(dist01).toContain("switchport mode trunk");
+    expect(dist01).toContain("switchport trunk allowed vlan 10,20");
+  });
+
+  it("keeps the core switches pure L3 transit — routed ports and OSPF, no VLANs/SVIs/trunks", () => {
+    for (const id of ["core-01", "core-02"]) {
+      const core = configs[id]!;
+      expect(core).toContain("ip routing");
+      expect(core).toContain("no switchport");
+      expect(core).toContain("router ospf 1");
+      expect(core).not.toContain("interface Vlan");
+      expect(core).not.toContain("switchport mode trunk");
+      expect(core).not.toContain("standby ");
+    }
+  });
+
+  it("has the edge routers originate the default into OSPF (static default toward the firewall)", () => {
+    for (const id of ["rtr-01", "rtr-02"]) {
+      const rtr = configs[id]!;
+      expect(rtr).toContain("router ospf 1");
+      expect(rtr).toContain("default-information originate");
+      expect(rtr).toMatch(/ip route 0\.0\.0\.0 0\.0\.0\.0 \d/);
+    }
+  });
+
+  it("keeps access switches L2-only: VLAN db + trunks, no routing", () => {
+    const acc01 = configs["acc-01"]!;
+    expect(acc01).toContain("vlan 10\n name corp-data");
+    expect(acc01).toContain("switchport mode trunk");
+    expect(acc01).not.toContain("ip routing");
+    expect(acc01).not.toContain("router ospf");
+  });
+});
+
 describe("renderCiscoIosConfig error handling", () => {
   it("throws UnsupportedDeviceError for a non-cisco-ios vendor", () => {
     const firewall = g1Design.devices.find((d) => d.id === "fw-01")!;
@@ -81,8 +146,9 @@ describe("renderCiscoIosConfig error handling", () => {
   });
 
   it("throws UnsupportedDeviceError for a cisco-ios device with an unsupported role", () => {
-    const fakeCoreSwitch = { ...g1Design.devices[0]!, id: "core-01", role: "core-switch" as const, vendorHint: "cisco-ios" as const };
-    expect(() => renderCiscoIosConfig(fakeCoreSwitch, g1Design)).toThrow(UnsupportedDeviceError);
-    expect(() => renderCiscoIosConfig(fakeCoreSwitch, g1Design)).toThrow(/no cisco-ios template for role "core-switch"/);
+    // load-balancer is L3-capable but has no cisco-ios template (a future vendor-rollout item).
+    const fakeLoadBalancer = { ...g1Design.devices[0]!, id: "lb-01", role: "load-balancer" as const, vendorHint: "cisco-ios" as const };
+    expect(() => renderCiscoIosConfig(fakeLoadBalancer, g1Design)).toThrow(UnsupportedDeviceError);
+    expect(() => renderCiscoIosConfig(fakeLoadBalancer, g1Design)).toThrow(/no cisco-ios template for role "load-balancer"/);
   });
 });

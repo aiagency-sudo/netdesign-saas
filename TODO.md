@@ -1131,13 +1131,33 @@ Steps 1–3 of the build order are shipped and the whole workspace is green
     config-gen for the new L3 switch roles is intentionally skipped (renders
     branch/edge only), not errored — same as FortiGate was initially.
 
-**NEXT (step 4, config-gen — its own increment, needs founder review):**
-cisco-ios **distribution** template (VLAN db + per-VLAN SVI with HSRP + OSPF +
-L2 trunk downlinks + routed /31 uplinks) and **core** template (routed /31 +
-OSPF, no host SVIs). Founder reviews the rendered G2 output line-by-line, same
-discipline as cisco-ios/FortiGate. Two design decisions were resolved by me and
-still need a render-time sign-off: (a) SVIs+HSRP on **distribution** (textbook),
-(b) **OSPF area 0** across the L3 layers.
+**Step 4, config-gen — DONE (needs founder line-by-line review):**
+Built the cisco-ios **distribution** template (`ip routing` + VLAN db +
+per-VLAN `interface VlanN` SVI with HSRP + routed /31 uplinks + L2 trunk
+downlinks + OSPF) and **core** template (`ip routing` + routed /31 + OSPF, no
+VLANs/SVIs/trunks). Also:
+- OSPF is now **per-device connected-networks** (`buildOspfForDevice`) instead
+  of blindly advertising every VLAN — a core advertises only its /31s + loopback,
+  a distribution advertises its SVI subnets + /31 uplinks. New
+  `cidrToNetworkAndWildcard` helper masks host bits for the `network` base.
+- Edge routers now emit `default-information originate` (they hold the static
+  default toward the firewall) so the campus interior learns the default via OSPF.
+- `renderCiscoIosConfig`/`renderAllConfigs` handle `distribution-switch` +
+  `core-switch`; **G2 config snapshot + assertions** added (SVIs+HSRP on dist,
+  pure-L3 core, L2 access, default-origination on edge). Full config-gen suite green.
+
+**Founder review checklist for the rendered G2 configs (still my calls, need sign-off):**
+1. SVIs+HSRP on **distribution** (textbook placement).
+2. **OSPF area 0** across all L3 layers (single-area; fine for this size).
+3. HSRP priorities: alphabetically-first device = active (110), others standby (100).
+4. **Refinements deliberately NOT done** (flag if wanted): (a) `passive-interface`
+   on the router's firewall-facing link (it currently sends OSPF hellos toward the
+   FortiGate, which speaks static/ECMP not OSPF — harmless but noisy); (b) the
+   composer lists the firewall in `routing.ospfAreas` area 0, but the FortiGate
+   template renders static/ECMP, not OSPF — reconcile by either making the edge
+   routers' firewall link passive (recommended) or dropping the firewall from the
+   OSPF device list. Either is a small follow-up once you confirm the intended edge
+   routing contract.
 
 ## BACKLOG (future add-on): sketch upload → rebuilt design — NOT STARTED
 

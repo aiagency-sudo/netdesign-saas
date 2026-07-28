@@ -1,0 +1,47 @@
+{{ banner }}
+!
+hostname {{ hostname }}
+!
+ip routing
+!
+{% for vlan in vlans %}
+vlan {{ vlan.id }}
+ name {{ vlan.name }}
+!
+{% endfor -%}
+{% for svi in svis %}
+interface Vlan{{ svi.vlanId }}
+ ip address {{ svi.ip }} {{ svi.netmask }}
+{% if svi.hsrp %}
+ standby {{ svi.hsrp.group }} ip {{ svi.hsrp.virtualIp }}
+ standby {{ svi.hsrp.group }} priority {{ svi.hsrp.priority }}
+ standby {{ svi.hsrp.group }} preempt
+{% endif %}
+ no shutdown
+!
+{% endfor -%}
+{% for port in routedPorts %}
+interface {{ port.name }}
+ description {{ port.description }}
+ no switchport
+ ip address {{ port.ip }} {{ port.netmask }}
+ no shutdown
+!
+{% endfor -%}
+{% for port in trunkPorts %}
+interface {{ port.name }}
+ description {{ port.description }}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan {{ port.allowedVlans }}
+ no shutdown
+!
+{% endfor -%}
+{% if ospf %}
+router ospf {{ ospf.processId }}
+{% for net in ospf.networks %}
+ network {{ net.network }} {{ net.wildcard }} area {{ net.area }}
+{% endfor -%}
+!
+{% endif -%}
+end

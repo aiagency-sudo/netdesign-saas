@@ -32,6 +32,9 @@ router ospf {{ ospf.processId }}
 {% for net in ospf.networks %}
  network {{ net.network }} {{ net.wildcard }} area {{ net.area }}
 {% endfor -%}
+{% if defaultRouteNextHop %}
+ default-information originate
+{% endif -%}
 !
 {% endif -%}
 {% if defaultRouteNextHop %}
