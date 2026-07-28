@@ -1102,9 +1102,42 @@ branch-office. Full three-tier (separate distribution tier) can follow.
    **core** template (routed /31 + OSPF, no host SVIs). Founder reviews the
    rendered G2 output line-by-line, same discipline as cisco-ios/FortiGate.
 
-Status: scoped + decisions locked; composer implementation is the next
-increment (not started — deliberately not rushed into a long session's tail;
-the design-engine is the moat and must stay bulletproof + green).
+**Status (Session — campus composer BUILT, steps 1–3 DONE):**
+Steps 1–3 of the build order are shipped and the whole workspace is green
+(build + test + typecheck + lint):
+- **schema-params**: `"campus-three-tier"` added to `designParamsPatternSchema`;
+  optional `coreSwitch`/`distributionSwitch` ({count 2/2, vendorHint}) added;
+  `accessSwitch.count` max raised to 24. (`packages/schema/src/zod/design-params.ts`)
+- **composer + dispatcher**: `packages/design-engine/src/compose/campus.ts`
+  (`composeCampusDesign`) + a `composeDesign(params)` dispatcher in
+  `compose/index.ts` that routes by `designPattern`. Shared interface/VLAN-id
+  helpers were extracted to `compose/shared.ts` so branch and campus share one
+  tested code path; SVIs land on distribution automatically (only L3-capable
+  role holding an L2 trunk to access) and are anchored to the first access trunk
+  so a dist switch with N access trunks emits each SVI once. **G2 golden compose
+  test** passes: SVIs+HSRP on distribution (`redundancyGroup: hsrp-dist`), core
+  pure L3 (routed /31 only, no trunk/SVI), OSPF area 0 across all L3 devices,
+  access L2-only, zero subnet overlap.
+  (`packages/design-engine/test/golden/compose-g2-campus.test.ts` + fixture)
+- **llm-extraction**: campus pattern in `TOOL_DESCRIPTION`/`CLARIFY_TOOL_DESCRIPTION`,
+  a 4th campus few-shot example, and SYSTEM_PROMPT rules for when to pick campus +
+  to set coreSwitch/distributionSwitch. `generateBranchOfficeDesign` renamed to
+  `generateDesign` and now calls the `composeDesign` dispatcher; apps/web
+  `/api/generate` + `/api/projects/[id]/regenerate` and the `scripts/generate-design.ts`
+  CLI (new `--fixture g2`) updated. Tests updated (4 examples, enum incl campus,
+  campus end-to-end dispatch case).
+
+  → campus **designs + diagram + HLD + .vsdx** all work now (role-driven);
+    config-gen for the new L3 switch roles is intentionally skipped (renders
+    branch/edge only), not errored — same as FortiGate was initially.
+
+**NEXT (step 4, config-gen — its own increment, needs founder review):**
+cisco-ios **distribution** template (VLAN db + per-VLAN SVI with HSRP + OSPF +
+L2 trunk downlinks + routed /31 uplinks) and **core** template (routed /31 +
+OSPF, no host SVIs). Founder reviews the rendered G2 output line-by-line, same
+discipline as cisco-ios/FortiGate. Two design decisions were resolved by me and
+still need a render-time sign-off: (a) SVIs+HSRP on **distribution** (textbook),
+(b) **OSPF area 0** across the L3 layers.
 
 ## Notes / decisions made without asking (boring-option calls)
 

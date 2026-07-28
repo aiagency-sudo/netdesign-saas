@@ -1,0 +1,676 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden G2 campus-three-tier — full design composition > matches the recorded snapshot 1`] = `
+{
+  "devices": [
+    {
+      "hostname": "fw-01",
+      "id": "fw-01",
+      "interfaces": [
+        {
+          "description": "Firewall uplink to rtr-01",
+          "ip": "10.20.1.8/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Firewall uplink to rtr-02",
+          "ip": "10.20.1.10/31",
+          "name": "eth0/1",
+        },
+      ],
+      "loopback": "10.20.1.0/32",
+      "mgmtIp": "10.20.0.2",
+      "role": "firewall",
+      "vendorHint": "fortinet-fortigate",
+    },
+    {
+      "hostname": "rtr-01",
+      "id": "rtr-01",
+      "interfaces": [
+        {
+          "description": "Firewall uplink to fw-01",
+          "ip": "10.20.1.9/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Core uplink to core-01",
+          "ip": "10.20.1.12/31",
+          "name": "eth0/1",
+        },
+        {
+          "description": "Core uplink to core-02",
+          "ip": "10.20.1.14/31",
+          "name": "eth0/2",
+        },
+      ],
+      "loopback": "10.20.1.1/32",
+      "mgmtIp": "10.20.0.3",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "rtr-02",
+      "id": "rtr-02",
+      "interfaces": [
+        {
+          "description": "Firewall uplink to fw-01",
+          "ip": "10.20.1.11/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Core uplink to core-01",
+          "ip": "10.20.1.16/31",
+          "name": "eth0/1",
+        },
+        {
+          "description": "Core uplink to core-02",
+          "ip": "10.20.1.18/31",
+          "name": "eth0/2",
+        },
+      ],
+      "loopback": "10.20.1.2/32",
+      "mgmtIp": "10.20.0.4",
+      "role": "router",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "core-01",
+      "id": "core-01",
+      "interfaces": [
+        {
+          "description": "Core uplink to rtr-01",
+          "ip": "10.20.1.13/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Core uplink to rtr-02",
+          "ip": "10.20.1.17/31",
+          "name": "eth0/1",
+        },
+        {
+          "description": "Core peer link to core-02",
+          "ip": "10.20.1.20/31",
+          "name": "eth0/2",
+        },
+        {
+          "description": "Distribution uplink to dist-01",
+          "ip": "10.20.1.23/31",
+          "name": "eth0/3",
+        },
+        {
+          "description": "Distribution uplink to dist-02",
+          "ip": "10.20.1.27/31",
+          "name": "eth0/4",
+        },
+      ],
+      "loopback": "10.20.1.3/32",
+      "mgmtIp": "10.20.0.5",
+      "role": "core-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "core-02",
+      "id": "core-02",
+      "interfaces": [
+        {
+          "description": "Core uplink to rtr-01",
+          "ip": "10.20.1.15/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Core uplink to rtr-02",
+          "ip": "10.20.1.19/31",
+          "name": "eth0/1",
+        },
+        {
+          "description": "Core peer link to core-01",
+          "ip": "10.20.1.21/31",
+          "name": "eth0/2",
+        },
+        {
+          "description": "Distribution uplink to dist-01",
+          "ip": "10.20.1.25/31",
+          "name": "eth0/3",
+        },
+        {
+          "description": "Distribution uplink to dist-02",
+          "ip": "10.20.1.29/31",
+          "name": "eth0/4",
+        },
+      ],
+      "loopback": "10.20.1.4/32",
+      "mgmtIp": "10.20.0.6",
+      "role": "core-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "dist-01",
+      "id": "dist-01",
+      "interfaces": [
+        {
+          "description": "Distribution uplink to core-01",
+          "ip": "10.20.1.22/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Distribution uplink to core-02",
+          "ip": "10.20.1.24/31",
+          "name": "eth0/1",
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-01",
+          "name": "eth0/2",
+          "svis": [
+            {
+              "ip": "10.20.2.2/24",
+              "vlanId": 10,
+            },
+            {
+              "ip": "10.20.3.2/24",
+              "vlanId": 20,
+            },
+          ],
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-02",
+          "name": "eth0/3",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-03",
+          "name": "eth0/4",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-04",
+          "name": "eth0/5",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-05",
+          "name": "eth0/6",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-06",
+          "name": "eth0/7",
+          "trunk": true,
+        },
+      ],
+      "loopback": "10.20.1.5/32",
+      "mgmtIp": "10.20.0.7",
+      "redundancyGroup": "hsrp-dist",
+      "role": "distribution-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "dist-02",
+      "id": "dist-02",
+      "interfaces": [
+        {
+          "description": "Distribution uplink to core-01",
+          "ip": "10.20.1.26/31",
+          "name": "eth0/0",
+        },
+        {
+          "description": "Distribution uplink to core-02",
+          "ip": "10.20.1.28/31",
+          "name": "eth0/1",
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-01",
+          "name": "eth0/2",
+          "svis": [
+            {
+              "ip": "10.20.2.3/24",
+              "vlanId": 10,
+            },
+            {
+              "ip": "10.20.3.3/24",
+              "vlanId": 20,
+            },
+          ],
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-02",
+          "name": "eth0/3",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-03",
+          "name": "eth0/4",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-04",
+          "name": "eth0/5",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-05",
+          "name": "eth0/6",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to acc-06",
+          "name": "eth0/7",
+          "trunk": true,
+        },
+      ],
+      "loopback": "10.20.1.6/32",
+      "mgmtIp": "10.20.0.8",
+      "redundancyGroup": "hsrp-dist",
+      "role": "distribution-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-01",
+      "id": "acc-01",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.9",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-02",
+      "id": "acc-02",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.10",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-03",
+      "id": "acc-03",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.11",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-04",
+      "id": "acc-04",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.12",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-05",
+      "id": "acc-05",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.13",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+    {
+      "hostname": "acc-06",
+      "id": "acc-06",
+      "interfaces": [
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-01",
+          "name": "eth0/0",
+          "trunk": true,
+        },
+        {
+          "allowedVlans": [
+            10,
+            20,
+          ],
+          "description": "Access trunk to dist-02",
+          "name": "eth0/1",
+          "trunk": true,
+        },
+      ],
+      "mgmtIp": "10.20.0.14",
+      "role": "access-switch",
+      "vendorHint": "cisco-ios",
+    },
+  ],
+  "links": [
+    {
+      "a": "fw-01:eth0/0",
+      "b": "rtr-01:eth0/0",
+      "kind": "ethernet",
+      "label": "Firewall uplink",
+      "subnet": "10.20.1.8/31",
+    },
+    {
+      "a": "fw-01:eth0/1",
+      "b": "rtr-02:eth0/0",
+      "kind": "ethernet",
+      "label": "Firewall uplink",
+      "subnet": "10.20.1.10/31",
+    },
+    {
+      "a": "rtr-01:eth0/1",
+      "b": "core-01:eth0/0",
+      "kind": "ethernet",
+      "label": "Core uplink",
+      "subnet": "10.20.1.12/31",
+    },
+    {
+      "a": "rtr-01:eth0/2",
+      "b": "core-02:eth0/0",
+      "kind": "ethernet",
+      "label": "Core uplink",
+      "subnet": "10.20.1.14/31",
+    },
+    {
+      "a": "rtr-02:eth0/1",
+      "b": "core-01:eth0/1",
+      "kind": "ethernet",
+      "label": "Core uplink",
+      "subnet": "10.20.1.16/31",
+    },
+    {
+      "a": "rtr-02:eth0/2",
+      "b": "core-02:eth0/1",
+      "kind": "ethernet",
+      "label": "Core uplink",
+      "subnet": "10.20.1.18/31",
+    },
+    {
+      "a": "core-01:eth0/2",
+      "b": "core-02:eth0/2",
+      "kind": "ethernet",
+      "label": "Core peer link",
+      "subnet": "10.20.1.20/31",
+    },
+    {
+      "a": "dist-01:eth0/0",
+      "b": "core-01:eth0/3",
+      "kind": "ethernet",
+      "label": "Distribution uplink",
+      "subnet": "10.20.1.22/31",
+    },
+    {
+      "a": "dist-01:eth0/1",
+      "b": "core-02:eth0/3",
+      "kind": "ethernet",
+      "label": "Distribution uplink",
+      "subnet": "10.20.1.24/31",
+    },
+    {
+      "a": "dist-02:eth0/0",
+      "b": "core-01:eth0/4",
+      "kind": "ethernet",
+      "label": "Distribution uplink",
+      "subnet": "10.20.1.26/31",
+    },
+    {
+      "a": "dist-02:eth0/1",
+      "b": "core-02:eth0/4",
+      "kind": "ethernet",
+      "label": "Distribution uplink",
+      "subnet": "10.20.1.28/31",
+    },
+    {
+      "a": "acc-01:eth0/0",
+      "b": "dist-01:eth0/2",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-01:eth0/1",
+      "b": "dist-02:eth0/2",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-02:eth0/0",
+      "b": "dist-01:eth0/3",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-02:eth0/1",
+      "b": "dist-02:eth0/3",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-03:eth0/0",
+      "b": "dist-01:eth0/4",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-03:eth0/1",
+      "b": "dist-02:eth0/4",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-04:eth0/0",
+      "b": "dist-01:eth0/5",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-04:eth0/1",
+      "b": "dist-02:eth0/5",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-05:eth0/0",
+      "b": "dist-01:eth0/6",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-05:eth0/1",
+      "b": "dist-02:eth0/6",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-06:eth0/0",
+      "b": "dist-01:eth0/7",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+    {
+      "a": "acc-06:eth0/1",
+      "b": "dist-02:eth0/7",
+      "kind": "ethernet",
+      "label": "Access trunk",
+    },
+  ],
+  "meta": {
+    "assumptions": [],
+    "designPattern": "campus-three-tier",
+    "intentSummary": "Three-tier campus: HSRP edge routers behind a firewall, a pure-L3 core pair, an HSRP distribution pair as VLAN gateways, and six L2 access switches serving corp-data and voice.",
+    "name": "G2 Campus",
+    "warnings": [],
+  },
+  "routing": {
+    "defaultRoute": "0.0.0.0/0",
+    "firstHopRedundancy": "hsrp",
+    "igp": "ospf",
+    "ospfAreas": [
+      {
+        "area": "0",
+        "deviceIds": [
+          "fw-01",
+          "rtr-01",
+          "rtr-02",
+          "core-01",
+          "core-02",
+          "dist-01",
+          "dist-02",
+        ],
+      },
+    ],
+  },
+  "segments": [
+    {
+      "cidr": "10.20.2.0/24",
+      "dhcp": true,
+      "gateway": "10.20.2.1",
+      "name": "corp-data",
+      "purpose": "user",
+      "vlanId": 10,
+    },
+    {
+      "cidr": "10.20.3.0/24",
+      "dhcp": true,
+      "gateway": "10.20.3.1",
+      "name": "voice",
+      "purpose": "voice",
+      "vlanId": 20,
+    },
+  ],
+  "version": "1.0",
+}
+`;

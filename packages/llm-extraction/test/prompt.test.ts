@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { CLARIFY_TOOL_NAME, SYSTEM_PROMPT, TOOL_NAME, clarifyToolInputSchema, toolInputSchema } from "../src/prompt.js";
 
 describe("extraction prompt", () => {
-  it("embeds exactly 3 few-shot examples", () => {
+  it("embeds exactly 4 few-shot examples", () => {
     const matches = SYSTEM_PROMPT.match(/Example \d+:/g) ?? [];
-    expect(matches).toHaveLength(3);
+    expect(matches).toHaveLength(4);
   });
 
   it("mentions the tool name so the model knows what to call", () => {
@@ -38,6 +38,8 @@ describe("extraction prompt", () => {
 
   it("restricts designPattern to the patterns the composer supports", () => {
     const properties = toolInputSchema["properties"] as Record<string, { enum?: string[] }>;
-    expect(new Set(properties["designPattern"]!.enum)).toEqual(new Set(["branch-office", "smb-flat"]));
+    expect(new Set(properties["designPattern"]!.enum)).toEqual(
+      new Set(["branch-office", "smb-flat", "campus-three-tier"]),
+    );
   });
 });
