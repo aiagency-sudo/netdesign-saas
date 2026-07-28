@@ -19,8 +19,8 @@
 import { writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
-import { composeBranchOfficeDesign } from "@netdesign/design-engine";
-import { createAnthropicExtractionClient, generateBranchOfficeDesign } from "@netdesign/llm-extraction";
+import { composeDesign } from "@netdesign/design-engine";
+import { createAnthropicExtractionClient, generateDesign } from "@netdesign/llm-extraction";
 import { designParamsSchema, type Design, type DesignParams } from "@netdesign/schema";
 
 const DEFAULT_VSDX_URL = "http://127.0.0.1:8000";
@@ -59,6 +59,22 @@ const GOLDEN_FIXTURES: Record<string, DesignParams> = {
       { name: "guest", purpose: "guest", dhcp: true },
     ],
   }),
+  g2: designParamsSchema.parse({
+    designPattern: "campus-three-tier",
+    siteName: "G2 Campus",
+    intentSummary:
+      "Three-tier campus: HSRP edge routers behind a firewall, a pure-L3 core pair, an HSRP distribution pair as VLAN gateways, and six L2 access switches serving corp-data and voice.",
+    siteSupernet: "10.20.0.0/16",
+    router: { count: 2, redundancy: "hsrp", vendorHint: "cisco-ios" },
+    accessSwitch: { count: 6, vendorHint: "cisco-ios" },
+    firewall: { present: true, vendorHint: "fortinet-fortigate" },
+    coreSwitch: { count: 2, vendorHint: "cisco-ios" },
+    distributionSwitch: { count: 2, vendorHint: "cisco-ios" },
+    vlans: [
+      { name: "corp-data", purpose: "user", dhcp: true },
+      { name: "voice", purpose: "voice", dhcp: true },
+    ],
+  }),
 };
 
 function printUsageAndExit(message?: string): never {
@@ -66,11 +82,11 @@ function printUsageAndExit(message?: string): never {
   console.error(
     [
       "Usage:",
-      "  pnpm generate -- --fixture <g1|g4> [--out <path>] [--vsdx-url <url>]",
+      "  pnpm generate -- --fixture <g1|g2|g4> [--out <path>] [--vsdx-url <url>]",
       "  pnpm generate -- --prose \"<requirements>\" [--out <path>] [--vsdx-url <url>] [--model <model>]",
       "",
       "Options:",
-      "  --fixture <name>       Use a canned golden-scenario design-params preset (g1, g4) — no ANTHROPIC_API_KEY needed.",
+      "  --fixture <name>       Use a canned golden-scenario design-params preset (g1, g2, g4) — no ANTHROPIC_API_KEY needed.",
       "  --prose <text>         Extract design-params from free-form prose via Claude (requires ANTHROPIC_API_KEY).",
       "  --out <path>           Where to write the .vsdx (default: derived from the design's name).",
       "  --design-json-out <path>  Also write the intermediate design JSON here, for inspection.",
@@ -95,7 +111,7 @@ async function buildDesign(values: {
     if (!params) {
       printUsageAndExit(`unknown --fixture "${values.fixture}". Valid options: ${Object.keys(GOLDEN_FIXTURES).join(", ")}.`);
     }
-    return composeBranchOfficeDesign(params);
+    return composeDesign(params);
   }
 
   if (values.prose) {
@@ -103,10 +119,10 @@ async function buildDesign(values: {
       printUsageAndExit("--prose requires the ANTHROPIC_API_KEY environment variable to be set.");
     }
     const client = createAnthropicExtractionClient();
-    return generateBranchOfficeDesign(values.prose, { client, ...(values.model ? { model: values.model } : {}) });
+    return generateDesign(values.prose, { client, ...(values.model ? { model: values.model } : {}) });
   }
 
-  printUsageAndExit("pass either --prose \"<requirements>\" or --fixture <g1|g4>.");
+  printUsageAndExit("pass either --prose \"<requirements>\" or --fixture <g1|g2|g4>.");
 }
 
 async function exportToVsdx(design: Design, vsdxUrl: string): Promise<Uint8Array> {

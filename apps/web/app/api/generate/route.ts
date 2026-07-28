@@ -4,7 +4,7 @@ import {
   DesignParamsExtractionError,
   NeedsClarificationError,
   createAnthropicExtractionClient,
-  generateBranchOfficeDesign,
+  generateDesign,
 } from "@netdesign/llm-extraction";
 import { DesignValidationError } from "@netdesign/schema";
 import { checkGenerationRateLimit, recordGenerationEvent } from "@/lib/rate-limit";
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   try {
     await recordGenerationEvent(supabase, user.id);
     const client = createAnthropicExtractionClient();
-    const design = await generateBranchOfficeDesign(parsedBody.data.prompt, { client });
+    const design = await generateDesign(parsedBody.data.prompt, { client });
 
     const { data: project, error } = await supabase
       .from("projects")
