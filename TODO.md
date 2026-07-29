@@ -886,27 +886,84 @@ This is the right architecture — don't move apps/web to Hostinger static/share
 hosting (it's a full Next.js server app: SSR, API routes, auth). Hostinger is
 the domain registrar only.
 
-**CURRENT custom domain: `app.netdesign.app`** (supersedes app.jactictservices.com
-after the NetDesign.app rebrand). Checklist to make it work end-to-end:
-1. **Vercel** → Project → Settings → Domains → add `app.netdesign.app`.
-2. **DNS at your registrar for netdesign.app** → add `CNAME` `app` →
-   `cname.vercel-dns.com`. (Keep the apex `netdesign.app` pointing at whatever
-   serves the marketing page — Vercel too is fine, or redirect apex → app.)
-   Wait for Vercel to show "Valid Configuration" + issue the TLS cert.
-3. **Supabase** → Authentication → URL Configuration (THIS is what fixes the
-   login loop — a stale value here silently redirects users to the old host):
-   - **Site URL** = `https://app.netdesign.app`
-   - **Redirect URLs** allow-list += `https://app.netdesign.app/**`
-     (keep the old domain + `https://<vercel-domain>/**` during the transition,
-     and `http://localhost:3000/**` for local dev)
-4. **Supabase** → Authentication → Providers → Email → **"Confirm email" OFF**
-   (see the section below — this is the other half of the login failures).
-5. Retry sign-in in a **fresh browser** with a **new link** (old links point at
-   the old host and are single-use).
+### DOMAIN PLAN — everything on `netdesign.app` (founder decision, 2026-07)
+
+`netdesign.app` is owned and is the project's permanent home. **`app.netdesign.app`
+is the canonical host** serving BOTH the marketing landing page (`/`) and the
+signed-in app (`/login`, `/projects`, `/api/*`) — apps/web serves both, so one
+host covers it. Other subdomains are reserved for other jobs as the project grows.
+
+**Subdomain map (current + reserved):**
+| Host | Purpose | Status |
+|---|---|---|
+| `app.netdesign.app` | landing + app (apps/web on Vercel) | ✅ live, Valid Configuration |
+| `netdesign.app` (apex) | **redirect → app.netdesign.app** | ⛔ TODO — see item A below |
+| `vsdx.netdesign.app` | services/vsdx (Railway) — currently a raw Railway URL | reserved |
+| `docs.netdesign.app` | docs / HLD samples, if ever needed | reserved |
+| `app.jactictservices.com` | previous domain | retire after cutover (see item C) |
+
+**Confirmed live config (verified from dashboards, 2026-07):**
+- Vercel Domains: `app.netdesign.app` ✅, `app.jactictservices.com` ✅,
+  `netdesign-saas-web-eta.vercel.app` ✅ — all Valid Configuration / Production.
+- Supabase → Site URL = `https://app.netdesign.app`; Redirect URLs allow-list has
+  `https://app.netdesign.app/**` + `https://app.jactictservices.com/**` + the two
+  raw-Vercel entries. **Extra entries are harmless** — Redirect URLs is an
+  allow-list, not a single value; Site URL is only the fallback when nothing matches.
+- Supabase → Authentication → User Signups → **Confirm email = OFF** ✅
+  (this was the main cause of testers being stuck on the login page).
 
 Our code sets `emailRedirectTo = ${window.location.origin}/auth/callback`, so it
 follows whatever host the user is on automatically — **no code change is needed
-for a domain move**; only steps 1-3 above.
+for a domain move**; it's all dashboard config.
+
+#### A. TODO — point the apex `netdesign.app` somewhere (blocks marketing links)
+Right now apex is NOT in Vercel, so `https://netdesign.app` dead-links. Every
+piece of launch copy (LinkedIn / Reddit / email / video end-card) says
+`netdesign.app`, so fix this BEFORE posting publicly. Pick one:
+- **Recommended:** Vercel → Settings → Domains → add `netdesign.app` and set it to
+  **Redirect to `app.netdesign.app`** (308). DNS: apex `A` → `76.76.21.21` (or
+  registrar `ALIAS`/`ANAME` → `cname.vercel-dns.com` if supported).
+- Or serve the landing page on apex and keep the app on `app.` — costs a split
+  deploy or rewrite rules; not worth it while one Next.js app serves both.
+
+Then re-check: no auth change needed (apex just redirects), but if apex ever
+serves the app directly, add `https://netdesign.app/**` to Supabase Redirect URLs.
+
+#### B. TODO — Supabase email template → `token_hash` (unlocks cross-browser links)
+`auth/callback/route.ts` already handles BOTH `?code=` (PKCE, same-browser only)
+and `?token_hash=&type=` (browser-independent via `verifyOtp`) — but Supabase's
+**default** magic-link template uses `{{ .ConfirmationURL }}`, which always lands
+on us with `?code=`. So the cross-browser path is implemented but **dormant until
+the template is changed**. Symptom while dormant: a link opened on a phone or in a
+mail app's in-app browser fails with our "opened in a different browser" message.
+
+**Fix:** Supabase → Authentication → Email Templates → **Magic Link**:
+```html
+<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink">Sign in to NetDesign.app</a>
+```
+If `{{ .RedirectTo }}` isn't populated in your Supabase version, use
+`{{ .SiteURL }}/auth/callback` instead — that works but drops the `?next=`
+deep-link (users land on `/projects` rather than the page they started from).
+Verify after changing: request a link, open it **on a different device**, confirm
+sign-in succeeds.
+
+#### C. TODO — retire `app.jactictservices.com` (after A + B are verified)
+Order matters, don't rush it: (1) confirm testers sign in fine on
+`app.netdesign.app`, (2) set the old domain to redirect → `app.netdesign.app` in
+Vercel rather than deleting it (old links/bookmarks keep working), (3) only then
+remove `https://app.jactictservices.com/**` from Supabase Redirect URLs. Also
+update any PostHog/Resend dashboards that reference the old host.
+
+#### Domain-move checklist (reuse for ANY future host change)
+1. Vercel → add domain, wait for Valid Configuration + TLS.
+2. DNS → `CNAME` sub → `cname.vercel-dns.com` (or apex `A` → `76.76.21.21`).
+3. Supabase → Site URL = new host; Redirect URLs += `https://<new-host>/**`
+   (keep `http://localhost:3000/**` for local dev).
+4. Supabase → Confirm email stays OFF.
+5. Old domain → redirect, don't delete. Retire its Redirect URL entry last.
+6. Testers must request a **fresh link** in a **clean browser** — old links point
+   at the old host and are single-use.
+7. Update launch copy / video end-cards / PostHog dashboards to the new host.
 
 **Previous custom domain: `app.jactictservices.com`**
 - Added in Vercel → Settings → Domains; DNS is a `CNAME` `app → cname.vercel-dns.com`
