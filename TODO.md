@@ -886,7 +886,29 @@ This is the right architecture — don't move apps/web to Hostinger static/share
 hosting (it's a full Next.js server app: SSR, API routes, auth). Hostinger is
 the domain registrar only.
 
-**Custom domain (in progress): `app.jactictservices.com`**
+**CURRENT custom domain: `app.netdesign.app`** (supersedes app.jactictservices.com
+after the NetDesign.app rebrand). Checklist to make it work end-to-end:
+1. **Vercel** → Project → Settings → Domains → add `app.netdesign.app`.
+2. **DNS at your registrar for netdesign.app** → add `CNAME` `app` →
+   `cname.vercel-dns.com`. (Keep the apex `netdesign.app` pointing at whatever
+   serves the marketing page — Vercel too is fine, or redirect apex → app.)
+   Wait for Vercel to show "Valid Configuration" + issue the TLS cert.
+3. **Supabase** → Authentication → URL Configuration (THIS is what fixes the
+   login loop — a stale value here silently redirects users to the old host):
+   - **Site URL** = `https://app.netdesign.app`
+   - **Redirect URLs** allow-list += `https://app.netdesign.app/**`
+     (keep the old domain + `https://<vercel-domain>/**` during the transition,
+     and `http://localhost:3000/**` for local dev)
+4. **Supabase** → Authentication → Providers → Email → **"Confirm email" OFF**
+   (see the section below — this is the other half of the login failures).
+5. Retry sign-in in a **fresh browser** with a **new link** (old links point at
+   the old host and are single-use).
+
+Our code sets `emailRedirectTo = ${window.location.origin}/auth/callback`, so it
+follows whatever host the user is on automatically — **no code change is needed
+for a domain move**; only steps 1-3 above.
+
+**Previous custom domain: `app.jactictservices.com`**
 - Added in Vercel → Settings → Domains; DNS is a `CNAME` `app → cname.vercel-dns.com`
   in Hostinger. Vercel custom domains are FREE on Hobby — the "$10/mo per domain"
   the founder saw was **Supabase's** custom-domain add-on (for the auth API
@@ -899,6 +921,27 @@ the domain registrar only.
     (keep `https://<vercel-domain>/**` too if you want the raw Vercel URL to work).
   Our code already sets `emailRedirectTo = ${origin}/auth/callback`; the localhost
   redirect bug is always the Supabase Site URL / allow-list being stale, not code.
+
+**Magic-link robustness fixes (shipped) — cross-browser clicks + visible errors.**
+Reported symptom: testers requested a link, clicked it, and landed back on the
+login page with no explanation ("stuck in a loop"). Two code gaps, both fixed:
+- `app/auth/callback/route.ts` only handled `?code=` (PKCE), which **requires the
+  same browser** that requested the link — so clicking from a phone or a mail
+  app's in-app browser always failed. It now also handles
+  `?token_hash=...&type=...` via `verifyOtp()` (browser-independent, preferred
+  when both are present), and reads Supabase's own `?error`/`error_description`.
+- Failures redirected to `/login?error=auth`, but the login page **never read the
+  param**, so the user saw a pristine form again. `/login` is now a server
+  component that reads `searchParams` and passes a human-readable message into
+  the new `login-form.tsx` client component (`expired` / `browser` / `invalid` /
+  `auth`), and emits a `magic_link_failed` PostHog event with the reason. The
+  "check your email" state now also tells the user to open the link in the same
+  browser. (`/login` is dynamic rather than static now — expected, it reads
+  searchParams.)
+Note the remaining non-code failure mode: corporate mail scanners (e.g. Outlook
+Safe Links) can **prefetch and consume** a single-use link before the human
+clicks; that surfaces as the "expired" message, and the fix is to request a new
+link (or use a non-scanned mailbox).
 
 **Migrations run against production Supabase so far:** 0002 (versions),
 0003 (rate limit), 0004 (waitlist). Run each new `supabase/migrations/*.sql`
