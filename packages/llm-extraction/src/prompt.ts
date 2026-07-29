@@ -56,10 +56,12 @@ interface FewShotExample {
 }
 
 /**
- * Four worked examples spanning all three supported patterns, varying vendor,
+ * Five worked examples spanning all three supported patterns, varying vendor,
  * redundancy, and switch/router count (example 3 has more switches than
  * routers, exercising the round-robin uplink case the composer handles;
- * example 4 is the three-tier campus with its core + distribution pairs).
+ * example 4 is the three-tier campus with its core + distribution pairs;
+ * example 5 shows a stated-but-unmodeled requirement — MPLS circuits — captured
+ * as a "Not yet modeled:" assumption instead of being silently dropped).
  * Each is parsed through designParamsSchema at module load so a typo here
  * fails immediately instead of silently degrading extraction quality.
  */
@@ -149,6 +151,30 @@ const EXAMPLES: FewShotExample[] = [
       assumptions: ["No IP address range was given; the engine will assign one."],
     }),
   },
+  {
+    prose:
+      "Small branch office for about 50 users, each with an IP phone. The office also has 4 security cameras. I " +
+      "want users and cameras segregated. Two MPLS circuits connect the site back to our main data centre.",
+    params: designParamsSchema.parse({
+      designPattern: "branch-office",
+      siteName: "Branch Office",
+      intentSummary:
+        "Branch office for ~50 users (a phone each) with four segregated security cameras — users, voice, and cameras on separate VLANs. The two MPLS circuits to the data centre are noted but not yet modeled.",
+      router: { count: 2, redundancy: "hsrp", vendorHint: "cisco-ios" },
+      accessSwitch: { count: 2, vendorHint: "cisco-ios" },
+      firewall: { present: false, vendorHint: "fortinet-fortigate" },
+      vlans: [
+        { name: "users", purpose: "user", dhcp: true },
+        { name: "voice", purpose: "voice", dhcp: true },
+        { name: "cameras", purpose: "iot", dhcp: true },
+      ],
+      assumptions: [
+        "No IP address range was given; the engine will assign one.",
+        "Not yet modeled: the two MPLS circuits to the main data centre — this design covers the branch LAN and edge only; WAN/MPLS connectivity and provider routing are not represented yet.",
+        "No firewall was mentioned; none was included at the edge.",
+      ],
+    }),
+  },
 ];
 
 function formatExample(example: FewShotExample, index: number): string {
@@ -176,6 +202,12 @@ user described, but let router.count/redundancy be the source of truth.
 - For "campus-three-tier", set coreSwitch and distributionSwitch (a pair each); leave them unset for the flat patterns.
 - Every fact you had to guess because the user didn't state it belongs in "assumptions" as a plain sentence — \
 this is what gets shown back to the user for confirmation, so it must be human-readable, not a code.
+- If the user states a requirement the design-params here CANNOT represent — e.g. WAN/MPLS/SD-WAN circuits, a \
+connection to another site or a data centre, QoS, specific provider/WAN routing, wireless controllers, load \
+balancers — do NOT silently drop it and do NOT pretend the design covers it. Design the part you can (the LAN and \
+edge), and record EACH unmodeled requirement as its own "assumptions" sentence beginning literally with \
+"Not yet modeled:" so the user can see exactly what was set aside (e.g. "Not yet modeled: the two MPLS circuits to \
+the data centre — this design covers the branch LAN and edge only."). Never let a stated requirement vanish without a trace.
 - Keep "intentSummary" to 1-2 sentences restating what you understood.
 - VLAN names should be short, lowercase, kebab-case identifiers (e.g. "corp-data", "guest", "voice").
 

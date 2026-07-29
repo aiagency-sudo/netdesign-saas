@@ -1205,6 +1205,42 @@ rules apply.
 **Sequencing:** AFTER beta launches on the solid prose → branch/SMB flow, so
 real tester feedback shapes the confidence/review UX (the make-or-break part).
 
+## BACKLOG (feature, from tester feedback): WAN edge — MPLS / dual-circuit — NOT STARTED
+
+**Origin:** tester (2026-07) asked for a branch that connects to the main data
+centre over **two MPLS circuits**. The LAN half (50 users, a phone each →
+voice VLAN, 4 cameras segregated into their own VLAN) composed well and the
+tester was happy — but there is **no WAN/MPLS modeling anywhere**: no
+design-params field for circuits/WAN uplinks/DC connectivity, and the branch
+composer only builds the LAN + an internet edge. The WAN requirement is
+currently only *surfaced as an assumption* (see the extractor change below),
+not designed. This item is to make it a real, first-class capability.
+
+**Scope (a "WAN edge" the branch/campus edge can attach to):**
+1. **schema/design-params**: a `wan` block — one or more circuits, each with
+   `type` (mpls | internet | broadband | lte), `provider?`, `bandwidth?`, and
+   a redundancy intent (active/active vs active/standby); plus the remote
+   endpoint (hub/data-centre) it targets.
+2. **schema/design**: model WAN circuits as links to a provider-edge / hub
+   node (or an abstract "WAN cloud" device role), with PE-CE addressing from
+   the engine (deterministic, like every other subnet).
+3. **design-engine composer**: place the CE router(s), attach circuits, and
+   apply the chosen redundancy pattern (dual-CE or single-CE dual-circuit).
+4. **routing (needs founder sign-off — networking decision):** PE-CE routing
+   default — **BGP vs static** to the provider, and **active/active (both
+   circuits load-share) vs active/standby (primary + backup)**. These two
+   choices define the feature; do not pick them silently.
+5. **config-gen**: cisco-ios CE template (circuit interfaces + BGP or static +
+   redundancy) — its own reviewed increment, same discipline as the campus
+   templates.
+6. **llm-extraction + tests**: extend the prompt/few-shots so a stated WAN is
+   captured into the new `wan` params (instead of the "Not yet modeled:"
+   assumption once this ships); golden fixture + compose/config tests.
+
+**Sequencing:** after beta feedback confirms demand (this is the first data
+point). It's the natural next composer-shaped feature — same pattern as
+branch → campus. Depends on the founder answering the routing defaults in (4).
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own

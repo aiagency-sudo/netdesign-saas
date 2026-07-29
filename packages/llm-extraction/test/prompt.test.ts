@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { CLARIFY_TOOL_NAME, SYSTEM_PROMPT, TOOL_NAME, clarifyToolInputSchema, toolInputSchema } from "../src/prompt.js";
 
 describe("extraction prompt", () => {
-  it("embeds exactly 4 few-shot examples", () => {
+  it("embeds exactly 5 few-shot examples", () => {
     const matches = SYSTEM_PROMPT.match(/Example \d+:/g) ?? [];
-    expect(matches).toHaveLength(4);
+    expect(matches).toHaveLength(5);
+  });
+
+  it("instructs the model to surface unmodeled requirements as a visible 'Not yet modeled:' assumption", () => {
+    expect(SYSTEM_PROMPT).toContain("Not yet modeled:");
+    // and demonstrates it with the MPLS few-shot example
+    expect(SYSTEM_PROMPT).toContain("MPLS");
   });
 
   it("mentions the tool name so the model knows what to call", () => {
