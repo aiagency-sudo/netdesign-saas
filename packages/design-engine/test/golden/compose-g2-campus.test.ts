@@ -26,18 +26,19 @@ describe("golden G2 campus-three-tier — full design composition", () => {
     expect(design.routing?.firstHopRedundancy).toBe("hsrp");
   });
 
-  it("runs OSPF area 0 across every L3 device — routers, core, distribution, firewall — and no access switch", () => {
+  it("runs OSPF area 0 across the L3 routing core — edge routers, core, distribution — but not the firewall or access", () => {
     expect(design.routing?.igp).toBe("ospf");
     const area0 = design.routing?.ospfAreas?.find((a) => a.area === "0");
     expect(area0).toBeDefined();
     const area0Ids = new Set(area0!.deviceIds);
-    const expectedL3 = design.devices
-      .filter((d) => d.role !== "access-switch")
+    // The FortiGate edge runs static/ECMP, not OSPF, so it is not an OSPF speaker.
+    const expectedSpeakers = design.devices
+      .filter((d) => d.role === "router" || d.role === "core-switch" || d.role === "distribution-switch")
       .map((d) => d.id);
-    expect(area0Ids).toEqual(new Set(expectedL3));
-    // No access switch is ever in the routing domain.
-    for (const acc of design.devices.filter((d) => d.role === "access-switch")) {
-      expect(area0Ids.has(acc.id)).toBe(false);
+    expect(area0Ids).toEqual(new Set(expectedSpeakers));
+    // Neither the firewall nor any access switch is in the routing domain.
+    for (const nonSpeaker of design.devices.filter((d) => d.role === "firewall" || d.role === "access-switch")) {
+      expect(area0Ids.has(nonSpeaker.id)).toBe(false);
     }
   });
 

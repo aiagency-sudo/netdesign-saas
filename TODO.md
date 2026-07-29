@@ -1131,13 +1131,32 @@ Steps 1–3 of the build order are shipped and the whole workspace is green
     config-gen for the new L3 switch roles is intentionally skipped (renders
     branch/edge only), not errored — same as FortiGate was initially.
 
-**NEXT (step 4, config-gen — its own increment, needs founder review):**
-cisco-ios **distribution** template (VLAN db + per-VLAN SVI with HSRP + OSPF +
-L2 trunk downlinks + routed /31 uplinks) and **core** template (routed /31 +
-OSPF, no host SVIs). Founder reviews the rendered G2 output line-by-line, same
-discipline as cisco-ios/FortiGate. Two design decisions were resolved by me and
-still need a render-time sign-off: (a) SVIs+HSRP on **distribution** (textbook),
-(b) **OSPF area 0** across the L3 layers.
+**Step 4, config-gen — DONE (needs founder line-by-line review):**
+Built the cisco-ios **distribution** template (`ip routing` + VLAN db +
+per-VLAN `interface VlanN` SVI with HSRP + routed /31 uplinks + L2 trunk
+downlinks + OSPF) and **core** template (`ip routing` + routed /31 + OSPF, no
+VLANs/SVIs/trunks). Also:
+- OSPF is now **per-device connected-networks** (`buildOspfForDevice`) instead
+  of blindly advertising every VLAN — a core advertises only its /31s + loopback,
+  a distribution advertises its SVI subnets + /31 uplinks. New
+  `cidrToNetworkAndWildcard` helper masks host bits for the `network` base.
+- Edge routers now emit `default-information originate` (they hold the static
+  default toward the firewall) so the campus interior learns the default via OSPF.
+- `renderCiscoIosConfig`/`renderAllConfigs` handle `distribution-switch` +
+  `core-switch`; **G2 config snapshot + assertions** added (SVIs+HSRP on dist,
+  pure-L3 core, L2 access, default-origination on edge). Full config-gen suite green.
+
+**Campus design contract — CONFIRMED WITH FOUNDER (2026-07), now locked + implemented:**
+1. SVIs+HSRP on **distribution** (textbook placement). ✅
+2. **OSPF area 0** across the L3 routing core (single-area). ✅
+3. HSRP: **alphabetically-first device = active (priority 110)**, others standby (100). ✅
+4. **Firewall is NOT an OSPF speaker** — the FortiGate runs static/ECMP, so it's
+   dropped from `routing.ospfAreas`, and the edge routers mark their firewall-facing
+   link **`passive-interface`** (subnet advertised, no adjacency attempted). ✅
+   Distribution **SVIs are passive too** (they face L2 access/hosts, never an OSPF
+   neighbor). Implemented via `buildOspfForDevice`'s speaker-set check +
+   `ospfSpeakerIds`/`peerDeviceIdOf` helpers; G2 compose + config snapshots and
+   assertions updated. Full suite green.
 
 ## BACKLOG (future add-on): sketch upload → rebuilt design — NOT STARTED
 
@@ -1185,6 +1204,104 @@ rules apply.
 
 **Sequencing:** AFTER beta launches on the solid prose → branch/SMB flow, so
 real tester feedback shapes the confidence/review UX (the make-or-break part).
+
+## BACKLOG (feature, from tester feedback): WAN edge — MPLS / dual-circuit — NOT STARTED
+
+**Origin:** tester (2026-07) asked for a branch that connects to the main data
+centre over **two MPLS circuits**. The LAN half (50 users, a phone each →
+voice VLAN, 4 cameras segregated into their own VLAN) composed well and the
+tester was happy — but there is **no WAN/MPLS modeling anywhere**: no
+design-params field for circuits/WAN uplinks/DC connectivity, and the branch
+composer only builds the LAN + an internet edge. The WAN requirement is
+currently only *surfaced as an assumption* (see the extractor change below),
+not designed. This item is to make it a real, first-class capability.
+
+**Scope (a "WAN edge" the branch/campus edge can attach to):**
+1. **schema/design-params**: a `wan` block — one or more circuits, each with
+   `type` (mpls | internet | broadband | lte), `provider?`, `bandwidth?`, and
+   a redundancy intent (active/active vs active/standby); plus the remote
+   endpoint (hub/data-centre) it targets.
+2. **schema/design**: model WAN circuits as links to a provider-edge / hub
+   node (or an abstract "WAN cloud" device role), with PE-CE addressing from
+   the engine (deterministic, like every other subnet).
+3. **design-engine composer**: place the CE router(s), attach circuits, and
+   apply the chosen redundancy pattern (dual-CE or single-CE dual-circuit).
+4. **routing (needs founder sign-off — networking decision):** PE-CE routing
+   default — **BGP vs static** to the provider, and **active/active (both
+   circuits load-share) vs active/standby (primary + backup)**. These two
+   choices define the feature; do not pick them silently.
+5. **DESIGN-DECISIONS GATE (required UX — founder asked for this explicitly):**
+   when a WAN/MPLS scenario is detected, the tool must **pause before rendering
+   the design + base configs and ask the user to choose** (a) static vs BGP and
+   (b) active/active vs active/standby, each with a sensible pre-selected
+   default and a one-line explanation. Only after the user confirms does it
+   compose + render. Mechanism: generalize the existing clarify path — the
+   extractor already returns a 422 `needsClarification` with questions; add a
+   parallel **`design_decisions`** shape (id, prompt, options[], default) that
+   the extractor emits when a decision-bearing requirement is detected, the UI
+   renders as a choice card, and the answers feed back into the `wan` params on
+   the follow-up call. Keep it generic so future features (SD-WAN, QoS, HA
+   modes) reuse the same gate — do NOT hard-code it to WAN.
+6. **config-gen**: cisco-ios CE template (circuit interfaces + BGP or static +
+   redundancy, driven by the gate's answers) — its own reviewed increment, same
+   discipline as the campus templates.
+7. **llm-extraction + tests**: extend the prompt/few-shots so a stated WAN is
+   captured into the new `wan` params (instead of the "Not yet modeled:"
+   assumption once this ships); golden fixture + compose/config tests.
+
+**DONE — "Not yet modeled" analytics tally (shipped):** the extractor already
+marks unmodeled requirements with a "Not yet modeled:" assumption; the web
+generate + regenerate routes now emit one PostHog **`design_unmodeled_requirement`**
+event per item (properties: `requirement`, `source`, `project_id`) plus
+`unmodeled_count` / `unmodeled_requirements` on the `design_generated` /
+`design_regenerated` events. Break down `design_unmodeled_requirement` by
+`requirement` in PostHog to rank the most-requested out-of-scope features — a
+data-driven build queue. Marker + extraction logic live in
+`apps/web/lib/unmodeled.ts` (`UNMODELED_PREFIX`).
+
+**Sequencing:** after beta feedback confirms demand (this is the first data
+point). It's the natural next composer-shaped feature — same pattern as
+branch → campus. Depends on the founder answering the routing defaults in (4).
+
+## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
+
+**Priority: deliberately last.** Build only after the feedback-driven features
+(WAN edge, sketch upload, additional vendors/patterns) land. Founder's call
+(2026-07): capture now so it isn't forgotten, sequence it at the end.
+
+**Goal:** let uploaded reference material — vendor whitepapers, best-practice
+design guides, and real base configs (small-office → enterprise) — *accelerate
+the deterministic layer*, WITHOUT ever becoming a runtime config generator.
+Protects the moat: the LLM still only proposes params/design intent; the engine
+still disposes (deterministic IP/VLAN, template-render-only configs).
+
+**Two ingestion tracks — both feed reviewed, tested artifacts, never raw output:**
+1. **Whitepapers / best-practice design docs → design rules + extraction context.**
+   Use them to (a) encode design rules into `packages/design-engine` (sizing,
+   redundancy, segmentation) and (b) optionally a RAG layer on the
+   *intent-extraction* stage so prose → params → assumptions reflect vendor best
+   practice. Improves *what the engine is told to build*; the engine still does
+   the math.
+2. **Reference base configs (uploaded) → drafted-and-tested templates.** An
+   uploaded config becomes source material: the LLM DRAFTS a new
+   `packages/config-gen` template → human review → golden test → ship. This is
+   the CLAUDE.md-sanctioned path ("LLM may draft a NEW template for human review,
+   but runtime config generation is template-render only") and the fastest way to
+   expand vendor/scenario coverage.
+
+**Hard guardrails (non-negotiable, from CLAUDE.md):**
+- NEVER feed whitepapers/configs to the LLM to emit configs at request time —
+  that reintroduces hallucination, breaks determinism + validation, and kills the
+  "not a chatbot guessing" positioning.
+- NEVER render a user's uploaded config verbatim (unvalidated/untrusted). It's
+  input to the template-authoring pipeline, not output.
+- Every generated template still begins with the mandated lab-validation banner
+  and must pass a golden test before shipping.
+
+**Scope when picked up:** upload UI + private per-owner storage (Supabase);
+an ingestion/review workflow (draft → human approve → test → publish); provenance
+tracking (which template/rule came from which source); and the extraction-side
+RAG index. Sizeable — treat as a mini-project, not a single increment.
 
 ## Notes / decisions made without asking (boring-option calls)
 
