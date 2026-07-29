@@ -1263,6 +1263,46 @@ data-driven build queue. Marker + extraction logic live in
 point). It's the natural next composer-shaped feature — same pattern as
 branch → campus. Depends on the founder answering the routing defaults in (4).
 
+## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
+
+**Priority: deliberately last.** Build only after the feedback-driven features
+(WAN edge, sketch upload, additional vendors/patterns) land. Founder's call
+(2026-07): capture now so it isn't forgotten, sequence it at the end.
+
+**Goal:** let uploaded reference material — vendor whitepapers, best-practice
+design guides, and real base configs (small-office → enterprise) — *accelerate
+the deterministic layer*, WITHOUT ever becoming a runtime config generator.
+Protects the moat: the LLM still only proposes params/design intent; the engine
+still disposes (deterministic IP/VLAN, template-render-only configs).
+
+**Two ingestion tracks — both feed reviewed, tested artifacts, never raw output:**
+1. **Whitepapers / best-practice design docs → design rules + extraction context.**
+   Use them to (a) encode design rules into `packages/design-engine` (sizing,
+   redundancy, segmentation) and (b) optionally a RAG layer on the
+   *intent-extraction* stage so prose → params → assumptions reflect vendor best
+   practice. Improves *what the engine is told to build*; the engine still does
+   the math.
+2. **Reference base configs (uploaded) → drafted-and-tested templates.** An
+   uploaded config becomes source material: the LLM DRAFTS a new
+   `packages/config-gen` template → human review → golden test → ship. This is
+   the CLAUDE.md-sanctioned path ("LLM may draft a NEW template for human review,
+   but runtime config generation is template-render only") and the fastest way to
+   expand vendor/scenario coverage.
+
+**Hard guardrails (non-negotiable, from CLAUDE.md):**
+- NEVER feed whitepapers/configs to the LLM to emit configs at request time —
+  that reintroduces hallucination, breaks determinism + validation, and kills the
+  "not a chatbot guessing" positioning.
+- NEVER render a user's uploaded config verbatim (unvalidated/untrusted). It's
+  input to the template-authoring pipeline, not output.
+- Every generated template still begins with the mandated lab-validation banner
+  and must pass a golden test before shipping.
+
+**Scope when picked up:** upload UI + private per-owner storage (Supabase);
+an ingestion/review workflow (draft → human approve → test → publish); provenance
+tracking (which template/rule came from which source); and the extraction-side
+RAG index. Sizeable — treat as a mini-project, not a single increment.
+
 ## Notes / decisions made without asking (boring-option calls)
 
 - `services/vsdx` is a standalone Python project (own `pyproject.toml`, own
