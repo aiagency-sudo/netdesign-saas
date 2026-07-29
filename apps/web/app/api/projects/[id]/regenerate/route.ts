@@ -10,6 +10,7 @@ import { DesignValidationError } from "@netdesign/schema";
 import { checkGenerationRateLimit, recordGenerationEvent } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { getPostHogClient } from "@/lib/posthog-server";
+import { captureUnmodeledRequirements } from "@/lib/unmodeled";
 
 const requestSchema = z.object({
   prompt: z.string().min(1, "Describe the network you need."),
@@ -81,6 +82,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const posthog = getPostHogClient();
     if (posthog) {
+      const unmodeled = captureUnmodeledRequirements(
+        posthog,
+        { distinctId: user.id, projectId: id, source: "regenerate" },
+        design,
+      );
       posthog.capture({
         distinctId: user.id,
         event: "design_regenerated",
@@ -89,6 +95,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           version_id: version.id,
           design_name: design.meta.name,
           device_count: design.devices?.length ?? 0,
+          unmodeled_count: unmodeled.length,
+          unmodeled_requirements: unmodeled,
         },
       });
       await posthog.flush();

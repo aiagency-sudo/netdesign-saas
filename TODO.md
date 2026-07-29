@@ -1230,12 +1230,34 @@ not designed. This item is to make it a real, first-class capability.
    default — **BGP vs static** to the provider, and **active/active (both
    circuits load-share) vs active/standby (primary + backup)**. These two
    choices define the feature; do not pick them silently.
-5. **config-gen**: cisco-ios CE template (circuit interfaces + BGP or static +
-   redundancy) — its own reviewed increment, same discipline as the campus
-   templates.
-6. **llm-extraction + tests**: extend the prompt/few-shots so a stated WAN is
+5. **DESIGN-DECISIONS GATE (required UX — founder asked for this explicitly):**
+   when a WAN/MPLS scenario is detected, the tool must **pause before rendering
+   the design + base configs and ask the user to choose** (a) static vs BGP and
+   (b) active/active vs active/standby, each with a sensible pre-selected
+   default and a one-line explanation. Only after the user confirms does it
+   compose + render. Mechanism: generalize the existing clarify path — the
+   extractor already returns a 422 `needsClarification` with questions; add a
+   parallel **`design_decisions`** shape (id, prompt, options[], default) that
+   the extractor emits when a decision-bearing requirement is detected, the UI
+   renders as a choice card, and the answers feed back into the `wan` params on
+   the follow-up call. Keep it generic so future features (SD-WAN, QoS, HA
+   modes) reuse the same gate — do NOT hard-code it to WAN.
+6. **config-gen**: cisco-ios CE template (circuit interfaces + BGP or static +
+   redundancy, driven by the gate's answers) — its own reviewed increment, same
+   discipline as the campus templates.
+7. **llm-extraction + tests**: extend the prompt/few-shots so a stated WAN is
    captured into the new `wan` params (instead of the "Not yet modeled:"
    assumption once this ships); golden fixture + compose/config tests.
+
+**DONE — "Not yet modeled" analytics tally (shipped):** the extractor already
+marks unmodeled requirements with a "Not yet modeled:" assumption; the web
+generate + regenerate routes now emit one PostHog **`design_unmodeled_requirement`**
+event per item (properties: `requirement`, `source`, `project_id`) plus
+`unmodeled_count` / `unmodeled_requirements` on the `design_generated` /
+`design_regenerated` events. Break down `design_unmodeled_requirement` by
+`requirement` in PostHog to rank the most-requested out-of-scope features — a
+data-driven build queue. Marker + extraction logic live in
+`apps/web/lib/unmodeled.ts` (`UNMODELED_PREFIX`).
 
 **Sequencing:** after beta feedback confirms demand (this is the first data
 point). It's the natural next composer-shaped feature — same pattern as
