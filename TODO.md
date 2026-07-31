@@ -1016,6 +1016,78 @@ Providers → Email (or Sign In/Up settings) → turn **OFF "Confirm email"**
 "Your sign-in link" email that creates the account and signs in on click. Safe
 for magic-link auth (no password ⇒ no unconfirmed-account risk). No code change.
 
+### Measuring the beta: where the data lives + how to get it out
+
+**Two separate email lists — don't confuse them:**
+| What | Where | How to read |
+|---|---|---|
+| Waitlist signups (landing page) | Supabase `public.waitlist` | `/admin` page, or Supabase Table Editor. **No SELECT policy** by design (0004_waitlist.sql) — the anon key can insert but never read, so reads need the service_role key. |
+| Actual testers (signed in ≥ once) | Supabase **Authentication → Users** (`auth.users`) | `/admin` page, or the Supabase dashboard. Row created on first successful magic-link sign-in. |
+
+The gap between the two = people who wanted in but never got through login.
+
+**`/admin` — owner-only beta dashboard (shipped).** `app/admin/page.tsx` shows
+waitlist count + recent entries (with a copy-all-emails box), tester accounts
+with last-sign-in, and a project count. Gated on **`ADMIN_EMAIL`** (single
+email; anyone else gets a 404, not a 403 — the page's existence isn't revealed).
+Reads via **`SUPABASE_SERVICE_ROLE_KEY`** (`lib/supabase/admin.ts`), which
+bypasses RLS — **server-only, never NEXT_PUBLIC_**. Both vars must be set in
+Vercel → Settings → Environment Variables; unset locally, /admin shows a notice
+instead of crashing.
+
+**PostHog events instrumented** (funnel order):
+`landing_cta_clicked` (has `location`) → `waitlist_joined` → `magic_link_requested`
+→ `magic_link_failed` (has `reason`: expired/browser/invalid/auth) → `user_signed_in`
+→ `design_generation_started` → `design_generated` (has `device_count`,
+`unmodeled_count`, `unmodeled_requirements`) / `design_generation_failed`
+→ `vsdx_exported` / `hld_downloaded` / `config_downloaded`.
+Plus `design_regenerated`, `design_regeneration_started`, `version_restored`, and
+`design_unmodeled_requirement` (the feature-request tally — break down by `requirement`).
+
+**The funnel to build first** (PostHog → Product Analytics → Funnels):
+Pageview → `landing_cta_clicked` → `magic_link_requested` → `user_signed_in` →
+`design_generated` → `config_downloaded`. Watch the
+`magic_link_requested → user_signed_in` step especially — that's where the login
+failures showed up as an invisible drop-off.
+
+**⚠️ Verify `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` is set in Vercel production.**
+If it's missing, `getPostHogClient()` returns null and **every server-side event
+is silently dropped** (you'd see pageviews but no `design_generated`).
+
+**Tag every shared link with UTMs** — PostHog only sees people once they land, so
+without these you can't tell which channel produced sign-ups. PostHog captures
+utm_* automatically; break any event down by `utm_source`.
+```
+https://netdesign.app/?utm_source=linkedin&utm_medium=social&utm_campaign=beta
+https://netdesign.app/?utm_source=reddit&utm_medium=social&utm_campaign=beta
+https://netdesign.app/?utm_source=email&utm_medium=email&utm_campaign=beta
+https://netdesign.app/?utm_source=youtube&utm_medium=video&utm_campaign=beta
+```
+For click counts *before* the landing page, use the platform's own post stats or
+a shortener (Dub/Bitly) — PostHog can't see those.
+
+**Getting data OUT of PostHog** (easiest → most powerful):
+1. **CSV from any view** — open an insight/funnel → the "..." menu → **Export**.
+   Person lists: People/Persons tab → filter → Export. Good enough for most asks.
+2. **SQL (HogQL)** — Product Analytics → **SQL** tab. Full query access over
+   events, and the results grid exports to CSV. Example — most-requested
+   unmodeled features:
+   ```sql
+   SELECT properties.requirement AS requirement, count() AS n
+   FROM events
+   WHERE event = 'design_unmodeled_requirement'
+     AND timestamp > now() - INTERVAL 30 DAY
+   GROUP BY requirement
+   ORDER BY n DESC
+   ```
+3. **Query API** (scripted/scheduled pulls) — `POST https://us.posthog.com/api/projects/<id>/query/`
+   with a **personal API key** (Settings → Personal API keys) as
+   `Authorization: Bearer <key>`, body `{"query":{"kind":"HogQLQuery","query":"<sql>"}}`.
+   Keep the key server-side only; it is NOT the same as the client write-only
+   project token.
+4. **Batch exports / webhooks** (Data pipelines) — continuous export to S3/BigQuery
+   etc. Overkill at beta scale; revisit only if the analysis outgrows CSV.
+
 **Where tester data lives:**
 - Waitlist emails → `public.waitlist` (Supabase → Table Editor → waitlist).
 - Signed-in tester accounts → Supabase-managed `auth.users` (Authentication →
