@@ -1448,7 +1448,58 @@ Greenfield "describe a network → get a design" is what we built; brownfield
 (most engineers maintain more than they green-field). Worth weighing this
 theme against the vendor-rollout order before committing the next big block.
 
-### Feature: config-to-design (brownfield import / reverse engineering) — NOT STARTED
+### Feature: config-to-design — CORE PACKAGE BUILT (`packages/config-parse`), UI NOT YET WIRED
+
+**Scope locked with founder (2026-07) — do not drift from this:**
+- ✅ Parse the uploaded config → produce a design + full documentation (diagram, HLD, .vsdx).
+- 🚫 **Never emit a replacement config.** The client's uploaded configuration is
+  the source of truth and is never overwritten or "corrected" into a new artifact.
+- 💡 **Recommendations only, clearly separated** — advisory findings, never
+  generated config lines.
+- 📄 All documentation describes **what was uploaded**, not an idealised version.
+
+**Shipped in `packages/config-parse`:**
+- `cisco-ios.ts` — deterministic IOS/IOS-XE parser (hostname, interfaces incl.
+  description/address/shutdown, trunks + allowed VLANs, access ports, SVIs,
+  dot1Q subinterfaces, HSRP group/vip/priority/preempt, VLAN database, OSPF
+  networks + passive-interface + default-information originate, static routes,
+  `ip routing`). Unrecognised lines go to `unparsedLines` — nothing is silently
+  dropped. Indentation-independent (uploads get reformatted in transit).
+- `roles.ts` — role inference from config *shape* (SVIs+trunks ⇒ distribution;
+  routed-only+OSPF+no switchports ⇒ core; dot1Q subinterfaces ⇒ router-on-a-stick;
+  switchports+no routing ⇒ access), each returning the evidence used.
+- `assemble.ts` — devices/segments/links/routing → `parseDesign()`-validated
+  `Design`. Links are inferred ONLY from routed interfaces sharing a subnet
+  (exact for point-to-point); **L2 trunk links are deliberately not guessed** —
+  a config doesn't record what a port is plugged into — and that limitation is
+  stated in `meta.assumptions`. Role guesses are recorded as assumptions too, so
+  the engineer can correct them.
+- `findings.ts` — advisory only, enforced by test: equal HSRP priorities,
+  inconsistent preempt, single-member HSRP, VLAN with no gateway, VLAN trunked
+  but undefined, shutdown-but-configured interfaces, duplicate addresses,
+  point-to-point subnets whose peer wasn't uploaded, ambiguous multi-device
+  subnets, and unparsed-line coverage.
+- `import.ts` — `importConfigs(uploads)` entry point + conservative
+  `detectVendor` that **refuses FortiGate/PAN-OS rather than half-parsing** them
+  into a misleading design.
+
+**Tests: 34 green.** The headline is the **round-trip property** — render G1/G2
+with config-gen, parse the configs back, and assert devices, roles, segment
+CIDRs/gateways, HSRP, OSPF areas and the 9-link campus fabric all survive. Only
+possible because the repo owns both halves; it is the strongest correctness
+check in the codebase. Verified end-to-end that an imported design renders an
+HLD via doc-gen.
+
+**Still to do for this feature:**
+1. **UI**: upload page (multi-file), a findings panel visually separated from the
+   design, and wiring into projects/exports. Reuse `/api/generate`'s project
+   + version + PostHog plumbing; add a `design_imported` event.
+2. Persist the uploaded text (Supabase storage, owner-scoped) so the source of
+   truth is retrievable alongside the design.
+3. More vendors (FortiGate/PAN-OS parsers) once cisco-ios is proven with testers.
+4. Consider surfacing `unparsedLines` in the UI so coverage gaps are visible.
+
+### (original scoping notes)
 Upload existing or draft device configs → parse → produce a schema-valid design
 → diagram + HLD + .vsdx (and optionally a cleaned/completed config set).
 
