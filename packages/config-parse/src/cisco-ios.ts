@@ -2,6 +2,64 @@ import { toCidr } from "./ip.js";
 import type { ParsedDevice, ParsedHsrp, ParsedInterface, ParsedOspf, ParsedStaticRoute, ParsedVlan } from "./types.js";
 
 /**
+ * Splits one uploaded file into per-device configuration sections.
+ *
+ * Engineers routinely keep several devices in a single file — and our own
+ * "Download configs" export concatenates a whole site that way, separated by
+ * `! Device: <id>` banners — so treating a file as exactly one device silently
+ * merged every device into one: each `hostname` overwrote the last and all the
+ * interfaces piled onto a single phantom device.
+ *
+ * A top-level `hostname` statement is the boundary: an IOS config has exactly
+ * one, so N of them means N devices. Any comment/blank lines immediately above
+ * a hostname (the banner introducing it) are kept with the device they
+ * introduce. A file with zero or one hostname is returned unchanged.
+ */
+export function splitDeviceConfigs(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  const hostnameLines: number[] = [];
+  lines.forEach((line, index) => {
+    if (/^\s*hostname\s+\S+\s*$/.test(line)) hostnameLines.push(index);
+  });
+
+  if (hostnameLines.length <= 1) return [text];
+
+  const sections: string[] = [];
+  for (const [position, hostnameLine] of hostnameLines.entries()) {
+    // First section keeps any file preamble; later ones start at their banner.
+    let start = position === 0 ? 0 : hostnameLine;
+    if (position > 0) {
+      const floor = hostnameLines[position - 1]! + 1;
+      while (start > floor) {
+        const previous = lines[start - 1]!.trim();
+        if (previous !== "" && !previous.startsWith("!")) break;
+        start--;
+      }
+    }
+    const end = position === hostnameLines.length - 1 ? lines.length : hostnameLines[position + 1]!;
+    sections.push(lines.slice(start, end).join("\n"));
+  }
+
+  // Re-slice so each section ends where the next begins (the loop above uses the
+  // next hostname as the end bound, which can duplicate a trailing banner).
+  return sections.map((section, index) =>
+    index < sections.length - 1 ? trimTrailingBanner(section) : section,
+  );
+}
+
+/** Drops trailing comment/blank lines so a following device's banner isn't duplicated into this section. */
+function trimTrailingBanner(section: string): string {
+  const lines = section.split("\n");
+  let end = lines.length;
+  while (end > 0) {
+    const line = lines[end - 1]!.trim();
+    if (line !== "" && !line.startsWith("!")) break;
+    end--;
+  }
+  return lines.slice(0, end).join("\n");
+}
+
+/**
  * Parses a cisco-ios / ios-xe running-config into {@link ParsedDevice} facts.
  *
  * Deliberately a plain deterministic parser, not an LLM: interfaces, addresses,
