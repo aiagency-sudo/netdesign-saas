@@ -886,7 +886,86 @@ This is the right architecture — don't move apps/web to Hostinger static/share
 hosting (it's a full Next.js server app: SSR, API routes, auth). Hostinger is
 the domain registrar only.
 
-**Custom domain (in progress): `app.jactictservices.com`**
+### DOMAIN PLAN — everything on `netdesign.app` (founder decision, 2026-07)
+
+`netdesign.app` is owned and is the project's permanent home. **`app.netdesign.app`
+is the canonical host** serving BOTH the marketing landing page (`/`) and the
+signed-in app (`/login`, `/projects`, `/api/*`) — apps/web serves both, so one
+host covers it. Other subdomains are reserved for other jobs as the project grows.
+
+**Subdomain map (current + reserved):**
+| Host | Purpose | Status |
+|---|---|---|
+| `app.netdesign.app` | landing + app (apps/web on Vercel) | ✅ live, Valid Configuration |
+| `netdesign.app` (apex) | **redirect → app.netdesign.app** | ⛔ TODO — see item A below |
+| `vsdx.netdesign.app` | services/vsdx (Railway) — currently a raw Railway URL | reserved |
+| `docs.netdesign.app` | docs / HLD samples, if ever needed | reserved |
+| `app.jactictservices.com` | previous domain | retire after cutover (see item C) |
+
+**Confirmed live config (verified from dashboards, 2026-07):**
+- Vercel Domains: `app.netdesign.app` ✅, `app.jactictservices.com` ✅,
+  `netdesign-saas-web-eta.vercel.app` ✅ — all Valid Configuration / Production.
+- Supabase → Site URL = `https://app.netdesign.app`; Redirect URLs allow-list has
+  `https://app.netdesign.app/**` + `https://app.jactictservices.com/**` + the two
+  raw-Vercel entries. **Extra entries are harmless** — Redirect URLs is an
+  allow-list, not a single value; Site URL is only the fallback when nothing matches.
+- Supabase → Authentication → User Signups → **Confirm email = OFF** ✅
+  (this was the main cause of testers being stuck on the login page).
+
+Our code sets `emailRedirectTo = ${window.location.origin}/auth/callback`, so it
+follows whatever host the user is on automatically — **no code change is needed
+for a domain move**; it's all dashboard config.
+
+#### A. TODO — point the apex `netdesign.app` somewhere (blocks marketing links)
+Right now apex is NOT in Vercel, so `https://netdesign.app` dead-links. Every
+piece of launch copy (LinkedIn / Reddit / email / video end-card) says
+`netdesign.app`, so fix this BEFORE posting publicly. Pick one:
+- **Recommended:** Vercel → Settings → Domains → add `netdesign.app` and set it to
+  **Redirect to `app.netdesign.app`** (308). DNS: apex `A` → `76.76.21.21` (or
+  registrar `ALIAS`/`ANAME` → `cname.vercel-dns.com` if supported).
+- Or serve the landing page on apex and keep the app on `app.` — costs a split
+  deploy or rewrite rules; not worth it while one Next.js app serves both.
+
+Then re-check: no auth change needed (apex just redirects), but if apex ever
+serves the app directly, add `https://netdesign.app/**` to Supabase Redirect URLs.
+
+#### B. TODO — Supabase email template → `token_hash` (unlocks cross-browser links)
+`auth/callback/route.ts` already handles BOTH `?code=` (PKCE, same-browser only)
+and `?token_hash=&type=` (browser-independent via `verifyOtp`) — but Supabase's
+**default** magic-link template uses `{{ .ConfirmationURL }}`, which always lands
+on us with `?code=`. So the cross-browser path is implemented but **dormant until
+the template is changed**. Symptom while dormant: a link opened on a phone or in a
+mail app's in-app browser fails with our "opened in a different browser" message.
+
+**Fix:** Supabase → Authentication → Email Templates → **Magic Link**:
+```html
+<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink">Sign in to NetDesign.app</a>
+```
+If `{{ .RedirectTo }}` isn't populated in your Supabase version, use
+`{{ .SiteURL }}/auth/callback` instead — that works but drops the `?next=`
+deep-link (users land on `/projects` rather than the page they started from).
+Verify after changing: request a link, open it **on a different device**, confirm
+sign-in succeeds.
+
+#### C. TODO — retire `app.jactictservices.com` (after A + B are verified)
+Order matters, don't rush it: (1) confirm testers sign in fine on
+`app.netdesign.app`, (2) set the old domain to redirect → `app.netdesign.app` in
+Vercel rather than deleting it (old links/bookmarks keep working), (3) only then
+remove `https://app.jactictservices.com/**` from Supabase Redirect URLs. Also
+update any PostHog/Resend dashboards that reference the old host.
+
+#### Domain-move checklist (reuse for ANY future host change)
+1. Vercel → add domain, wait for Valid Configuration + TLS.
+2. DNS → `CNAME` sub → `cname.vercel-dns.com` (or apex `A` → `76.76.21.21`).
+3. Supabase → Site URL = new host; Redirect URLs += `https://<new-host>/**`
+   (keep `http://localhost:3000/**` for local dev).
+4. Supabase → Confirm email stays OFF.
+5. Old domain → redirect, don't delete. Retire its Redirect URL entry last.
+6. Testers must request a **fresh link** in a **clean browser** — old links point
+   at the old host and are single-use.
+7. Update launch copy / video end-cards / PostHog dashboards to the new host.
+
+**Previous custom domain: `app.jactictservices.com`**
 - Added in Vercel → Settings → Domains; DNS is a `CNAME` `app → cname.vercel-dns.com`
   in Hostinger. Vercel custom domains are FREE on Hobby — the "$10/mo per domain"
   the founder saw was **Supabase's** custom-domain add-on (for the auth API
@@ -899,6 +978,27 @@ the domain registrar only.
     (keep `https://<vercel-domain>/**` too if you want the raw Vercel URL to work).
   Our code already sets `emailRedirectTo = ${origin}/auth/callback`; the localhost
   redirect bug is always the Supabase Site URL / allow-list being stale, not code.
+
+**Magic-link robustness fixes (shipped) — cross-browser clicks + visible errors.**
+Reported symptom: testers requested a link, clicked it, and landed back on the
+login page with no explanation ("stuck in a loop"). Two code gaps, both fixed:
+- `app/auth/callback/route.ts` only handled `?code=` (PKCE), which **requires the
+  same browser** that requested the link — so clicking from a phone or a mail
+  app's in-app browser always failed. It now also handles
+  `?token_hash=...&type=...` via `verifyOtp()` (browser-independent, preferred
+  when both are present), and reads Supabase's own `?error`/`error_description`.
+- Failures redirected to `/login?error=auth`, but the login page **never read the
+  param**, so the user saw a pristine form again. `/login` is now a server
+  component that reads `searchParams` and passes a human-readable message into
+  the new `login-form.tsx` client component (`expired` / `browser` / `invalid` /
+  `auth`), and emits a `magic_link_failed` PostHog event with the reason. The
+  "check your email" state now also tells the user to open the link in the same
+  browser. (`/login` is dynamic rather than static now — expected, it reads
+  searchParams.)
+Note the remaining non-code failure mode: corporate mail scanners (e.g. Outlook
+Safe Links) can **prefetch and consume** a single-use link before the human
+clicks; that surfaces as the "expired" message, and the fix is to request a new
+link (or use a non-scanned mailbox).
 
 **Migrations run against production Supabase so far:** 0002 (versions),
 0003 (rate limit), 0004 (waitlist). Run each new `supabase/migrations/*.sql`
@@ -915,6 +1015,78 @@ Providers → Email (or Sign In/Up settings) → turn **OFF "Confirm email"**
 (a.k.a. "Enable email confirmations"). After that a new address gets a single
 "Your sign-in link" email that creates the account and signs in on click. Safe
 for magic-link auth (no password ⇒ no unconfirmed-account risk). No code change.
+
+### Measuring the beta: where the data lives + how to get it out
+
+**Two separate email lists — don't confuse them:**
+| What | Where | How to read |
+|---|---|---|
+| Waitlist signups (landing page) | Supabase `public.waitlist` | `/admin` page, or Supabase Table Editor. **No SELECT policy** by design (0004_waitlist.sql) — the anon key can insert but never read, so reads need the service_role key. |
+| Actual testers (signed in ≥ once) | Supabase **Authentication → Users** (`auth.users`) | `/admin` page, or the Supabase dashboard. Row created on first successful magic-link sign-in. |
+
+The gap between the two = people who wanted in but never got through login.
+
+**`/admin` — owner-only beta dashboard (shipped).** `app/admin/page.tsx` shows
+waitlist count + recent entries (with a copy-all-emails box), tester accounts
+with last-sign-in, and a project count. Gated on **`ADMIN_EMAIL`** (single
+email; anyone else gets a 404, not a 403 — the page's existence isn't revealed).
+Reads via **`SUPABASE_SERVICE_ROLE_KEY`** (`lib/supabase/admin.ts`), which
+bypasses RLS — **server-only, never NEXT_PUBLIC_**. Both vars must be set in
+Vercel → Settings → Environment Variables; unset locally, /admin shows a notice
+instead of crashing.
+
+**PostHog events instrumented** (funnel order):
+`landing_cta_clicked` (has `location`) → `waitlist_joined` → `magic_link_requested`
+→ `magic_link_failed` (has `reason`: expired/browser/invalid/auth) → `user_signed_in`
+→ `design_generation_started` → `design_generated` (has `device_count`,
+`unmodeled_count`, `unmodeled_requirements`) / `design_generation_failed`
+→ `vsdx_exported` / `hld_downloaded` / `config_downloaded`.
+Plus `design_regenerated`, `design_regeneration_started`, `version_restored`, and
+`design_unmodeled_requirement` (the feature-request tally — break down by `requirement`).
+
+**The funnel to build first** (PostHog → Product Analytics → Funnels):
+Pageview → `landing_cta_clicked` → `magic_link_requested` → `user_signed_in` →
+`design_generated` → `config_downloaded`. Watch the
+`magic_link_requested → user_signed_in` step especially — that's where the login
+failures showed up as an invisible drop-off.
+
+**⚠️ Verify `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` is set in Vercel production.**
+If it's missing, `getPostHogClient()` returns null and **every server-side event
+is silently dropped** (you'd see pageviews but no `design_generated`).
+
+**Tag every shared link with UTMs** — PostHog only sees people once they land, so
+without these you can't tell which channel produced sign-ups. PostHog captures
+utm_* automatically; break any event down by `utm_source`.
+```
+https://netdesign.app/?utm_source=linkedin&utm_medium=social&utm_campaign=beta
+https://netdesign.app/?utm_source=reddit&utm_medium=social&utm_campaign=beta
+https://netdesign.app/?utm_source=email&utm_medium=email&utm_campaign=beta
+https://netdesign.app/?utm_source=youtube&utm_medium=video&utm_campaign=beta
+```
+For click counts *before* the landing page, use the platform's own post stats or
+a shortener (Dub/Bitly) — PostHog can't see those.
+
+**Getting data OUT of PostHog** (easiest → most powerful):
+1. **CSV from any view** — open an insight/funnel → the "..." menu → **Export**.
+   Person lists: People/Persons tab → filter → Export. Good enough for most asks.
+2. **SQL (HogQL)** — Product Analytics → **SQL** tab. Full query access over
+   events, and the results grid exports to CSV. Example — most-requested
+   unmodeled features:
+   ```sql
+   SELECT properties.requirement AS requirement, count() AS n
+   FROM events
+   WHERE event = 'design_unmodeled_requirement'
+     AND timestamp > now() - INTERVAL 30 DAY
+   GROUP BY requirement
+   ORDER BY n DESC
+   ```
+3. **Query API** (scripted/scheduled pulls) — `POST https://us.posthog.com/api/projects/<id>/query/`
+   with a **personal API key** (Settings → Personal API keys) as
+   `Authorization: Bearer <key>`, body `{"query":{"kind":"HogQLQuery","query":"<sql>"}}`.
+   Keep the key server-side only; it is NOT the same as the client write-only
+   project token.
+4. **Batch exports / webhooks** (Data pipelines) — continuous export to S3/BigQuery
+   etc. Overkill at beta scale; revisit only if the analysis outgrows CSV.
 
 **Where tester data lives:**
 - Waitlist emails → `public.waitlist` (Supabase → Table Editor → waitlist).
@@ -1262,6 +1434,52 @@ data-driven build queue. Marker + extraction logic live in
 **Sequencing:** after beta feedback confirms demand (this is the first data
 point). It's the natural next composer-shaped feature — same pattern as
 branch → campus. Depends on the founder answering the routing defaults in (4).
+
+## STRATEGIC SIGNAL (from beta feedback): brownfield > greenfield — REVIEW BEFORE PICKING NEXT FEATURE
+
+Three independent tester requests now point the same direction — engineers want
+to work with the network they **already have**, not only design a new one:
+1. "Can I upload a rough sketch and have it rebuilt?" → sketch-upload backlog.
+2. "Can a draft config/command set be uploaded and asked to produce a design?" → **config-to-design** (new, below).
+3. "Can I use the tool to reconfigure BGP and generate the design?" → **BGP support** (new, below).
+
+Greenfield "describe a network → get a design" is what we built; brownfield
+"here's my existing network → document/modify it" may be the larger market
+(most engineers maintain more than they green-field). Worth weighing this
+theme against the vendor-rollout order before committing the next big block.
+
+### Feature: config-to-design (brownfield import / reverse engineering) — NOT STARTED
+Upload existing or draft device configs → parse → produce a schema-valid design
+→ diagram + HLD + .vsdx (and optionally a cleaned/completed config set).
+
+**Why it fits the moat unusually well:** parsing a config is a *deterministic
+parser* problem, not an LLM problem. Interfaces, VLANs, IP/mask, HSRP groups,
+OSPF networks and BGP neighbors are all extractable with a grammar — the LLM is
+not needed for the core parse, only (optionally) to summarize intent. Same rule
+as everywhere else: parser proposes structure, engine validates and disposes.
+
+**Sketch:** vendor-specific parsers (start cisco-ios, reuse the config-gen view
+models in reverse) → `design-params`/`Design` → `parseDesign()` → existing
+render/export path. Round-trip test is the natural golden: render a G1/G2 config
+with config-gen, parse it back, and assert the design matches — a genuinely
+strong correctness property we get for free from already having both halves.
+
+**Open questions:** partial/draft configs (how much to infer vs. flag as an
+assumption); non-config facts a config can't carry (site name, intent); how to
+report parse gaps ("Not yet modeled:"-style, reuse the existing convention).
+
+### Feature: BGP support — NOT STARTED (overlaps WAN edge)
+`packages/schema/src/zod/routing.ts` already has a `bgp` field, but no composer
+sets it and no template renders it — today's designs are static or OSPF only.
+Tester asked specifically about **reconfiguring BGP**, which is brownfield
+(above), not greenfield.
+
+Deliberately **overlaps the WAN-edge item**, whose open founder decision is
+exactly "PE-CE routing: BGP vs static". Do NOT build these twice — settle the
+WAN-edge routing decision first, implement BGP once (schema + composer +
+cisco-ios template + golden tests), and let both WAN edge and brownfield
+reconfigure consume it. Founder is the domain expert on the defaults (iBGP vs
+eBGP, AS numbering, route-reflection at scale) — ask before designing.
 
 ## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
 

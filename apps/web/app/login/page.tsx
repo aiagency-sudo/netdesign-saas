@@ -1,71 +1,40 @@
-"use client";
+import { LoginForm } from "./login-form";
 
-import { useState, type FormEvent } from "react";
-import { createClient } from "@/lib/supabase/client";
-import posthog from "posthog-js";
+/**
+ * Human-readable text for the `?error=` reasons auth/callback redirects with.
+ * Without this the callback's failure was invisible — the user just saw a
+ * pristine form again and assumed nothing had happened, which is what made a
+ * failed magic link look like an endless loop.
+ */
+const CALLBACK_ERRORS: Record<string, string> = {
+  expired:
+    "That sign-in link has expired or was already used. Links are single-use — request a fresh one below.",
+  browser:
+    "That link was opened in a different browser than the one that requested it. Request a new link below and open it in this browser.",
+  invalid: "That sign-in link was incomplete. Request a new one below.",
+  auth: "We couldn't complete sign-in with that link. Request a new one below.",
+};
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
+/** Reads `?error=` / `?next=` server-side, so the client form needs no window access and no Suspense boundary. */
+function first(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatus("sending");
-    setError(null);
-
-    // Preserve a ?next= destination (e.g. the landing-page CTA sends
-    // ?next=/projects/new) through the magic link so the user lands on the
-    // intended page after sign-in. Read from window (not useSearchParams) to
-    // avoid forcing a Suspense boundary on this otherwise-static page.
-    const next = new URLSearchParams(window.location.search).get("next");
-    const callback = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
-
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: callback },
-    });
-
-    if (signInError) {
-      setStatus("error");
-      setError(signInError.message);
-      return;
-    }
-
-    posthog.capture("magic_link_requested");
-    setStatus("sent");
-  }
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const reason = first(params["error"]);
+  const initialError = reason ? (CALLBACK_ERRORS[reason] ?? CALLBACK_ERRORS["auth"]!) : null;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
       <h1 className="mb-2 text-2xl font-semibold">NetDesign.app</h1>
       <p className="mb-6 text-sm text-slate-500">Sign in with a magic link — no password needed.</p>
-
-      {status === "sent" ? (
-        <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Check {email} for a sign-in link.
-        </p>
-      ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@company.com"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={status === "sending"}
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {status === "sending" ? "Sending..." : "Send magic link"}
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </form>
-      )}
+      <LoginForm initialError={initialError} next={first(params["next"])} />
     </main>
   );
 }
