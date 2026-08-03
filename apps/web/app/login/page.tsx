@@ -29,12 +29,20 @@ export default async function LoginPage({
   const params = await searchParams;
   const reason = first(params["error"]);
   const initialError = reason ? (CALLBACK_ERRORS[reason] ?? CALLBACK_ERRORS["auth"]!) : null;
+  const detail = first(params["detail"]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
       <h1 className="mb-2 text-2xl font-semibold">NetDesign.app</h1>
-      <p className="mb-6 text-sm text-slate-500">Sign in with a magic link — no password needed.</p>
-      <LoginForm initialError={initialError} next={first(params["next"])} />
+      <p className="mb-6 text-sm text-slate-500">
+        We&apos;ll email you a 6-digit sign-in code — no password needed.
+      </p>
+      <LoginForm
+        initialError={initialError}
+        next={first(params["next"])}
+        {...(reason ? { errorReason: reason } : {})}
+        {...(detail ? { errorDetail: detail } : {})}
+      />
     </main>
   );
 }

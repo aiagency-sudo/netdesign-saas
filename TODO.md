@@ -929,7 +929,39 @@ piece of launch copy (LinkedIn / Reddit / email / video end-card) says
 Then re-check: no auth change needed (apex just redirects), but if apex ever
 serves the app directly, add `https://netdesign.app/**` to Supabase Redirect URLs.
 
-#### B. TODO — Supabase email template → `token_hash` (unlocks cross-browser links)
+#### B'. SIGN-IN IS NOW CODE-FIRST (supersedes the token_hash plan below)
+
+**Root cause, proven from Supabase Auth Logs (2026-08):** the first `GET /verify`
+always returned `303 login: request completed` (success), and every later hit
+returned `403 One-time token not found`. So the single-use token was being
+redeemed BEFORE the human's click landed — by a link scanner/browser preload,
+and/or the click happening in a different browser (requested in Firefox/DuckDuckGo,
+clicked in Edge) where the PKCE `code_verifier` cookie doesn't exist. Neither is
+fixable in our code: the link is consumed off-platform.
+
+**Fix shipped: 6-digit code is the PRIMARY sign-in method, emailed link secondary.**
+A typed code has no URL to prefetch and no cookie to lose, so it works from any
+device or browser. `app/login/login-form.tsx` is now two-step (email → code) and
+calls `verifyOtp({ email, token, type: "email" })`; `auth/callback/route.ts` is
+unchanged and still handles the emailed link.
+
+**⚠️ REQUIRED Supabase change — the code only appears if the template prints it.**
+Authentication → Email Templates → **Magic Link**, include BOTH:
+```html
+<h2>Your sign-in code</h2>
+<p style="font-size:28px;letter-spacing:6px;font-family:monospace"><strong>{{ .Token }}</strong></p>
+<p>Enter this code on the sign-in page. It expires shortly and can only be used once.</p>
+<p>Or <a href="{{ .ConfirmationURL }}">click here to sign in</a> — this only works in the browser you requested it from.</p>
+```
+`{{ .Token }}` is the 6-digit code; `{{ .ConfirmationURL }}` is the same one-time
+token as a link. Both redeem the SAME token, so whichever the user uses first wins.
+
+**Analytics:** `signin_code_requested` / `signin_code_resent` /
+`signin_code_verified` / `signin_code_failed`, plus the existing
+`magic_link_failed` (now carries a `detail` with the real provider/SDK message).
+Compare code-verified vs link failures to confirm the drop-off closes.
+
+#### B (SUPERSEDED — kept for context) — Supabase email template → `token_hash`
 `auth/callback/route.ts` already handles BOTH `?code=` (PKCE, same-browser only)
 and `?token_hash=&type=` (browser-independent via `verifyOtp`) — but Supabase's
 **default** magic-link template uses `{{ .ConfirmationURL }}`, which always lands
