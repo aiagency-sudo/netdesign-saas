@@ -1,19 +1,40 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import posthog from "posthog-js";
 
-export function LoginForm({ initialError, next }: { initialError: string | null; next: string | null }) {
+export function LoginForm({
+  initialError,
+  next,
+  errorReason,
+  errorDetail,
+}: {
+  initialError: string | null;
+  next: string | null;
+  /** Classified failure code from auth/callback, for analytics. */
+  errorReason?: string;
+  /** Raw provider/SDK message, shown only behind a disclosure — auth failures are otherwise indistinguishable. */
+  errorDetail?: string;
+}) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(initialError);
+  const [detail, setDetail] = useState<string | undefined>(errorDetail);
+
+  // Report the failure once, with the real message, so remote debugging doesn't
+  // depend on the user screenshotting the page.
+  useEffect(() => {
+    if (!errorReason) return;
+    posthog.capture("magic_link_failed", { reason: errorReason, detail: errorDetail ?? null });
+  }, [errorReason, errorDetail]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("sending");
     // Requesting a fresh link clears any failure carried over from a previous attempt.
     setError(null);
+    setDetail(undefined);
 
     // Preserve the ?next= destination (e.g. the landing CTA sends
     // ?next=/projects/new) through the magic link so the user lands on the
@@ -40,9 +61,15 @@ export function LoginForm({ initialError, next }: { initialError: string | null;
     <>
       {/* Above the form so a failed callback is the first thing the user reads. */}
       {error && (
-        <p role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </p>
+        <div role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">
+          <p>{error}</p>
+          {detail && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs opacity-70">Technical details</summary>
+              <p className="mt-1 break-words font-mono text-[11px] opacity-80">{detail}</p>
+            </details>
+          )}
+        </div>
       )}
 
       {status === "sent" ? (

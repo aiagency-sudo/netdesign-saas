@@ -48,14 +48,26 @@ export async function GET(request: Request) {
   // Supabase can redirect here with its own error (e.g. otp_expired) instead of a credential.
   const providerError = searchParams.get("error_description") ?? searchParams.get("error");
 
-  const failure = (reason: string) => NextResponse.redirect(`${origin}/login?error=${reason}`);
+  /**
+   * Carries a short technical `detail` through the redirect alongside the
+   * friendly reason. Shown only behind a "Technical details" disclosure and
+   * sent to PostHog — without it, every auth failure looks identical from the
+   * outside and can only be debugged by guesswork.
+   */
+  const failure = (reason: string, detail?: string) => {
+    const params = new URLSearchParams({ error: reason });
+    if (detail) params.set("detail", detail.slice(0, 200));
+    return NextResponse.redirect(`${origin}/login?${params.toString()}`);
+  };
 
   if (providerError) {
-    return failure(classifyAuthError(providerError));
+    return failure(classifyAuthError(providerError), providerError);
   }
 
   if (!code && !tokenHash) {
-    return failure("invalid");
+    // Distinguishes "no params at all" from "the template sent an empty value".
+    const present = [...searchParams.keys()].join(",") || "none";
+    return failure("invalid", `no credential in callback; params present: ${present}`);
   }
 
   const supabase = await createClient();
@@ -67,7 +79,8 @@ export async function GET(request: Request) {
     : await supabase.auth.exchangeCodeForSession(code!); // one of the two is non-null (checked above)
 
   if (error) {
-    return failure(classifyAuthError(error.message));
+    const method = tokenHash && otpType ? "verifyOtp" : "exchangeCodeForSession";
+    return failure(classifyAuthError(error.message), `${method}: ${error.message}`);
   }
 
   const posthog = getPostHogClient();
