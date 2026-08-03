@@ -1468,18 +1468,22 @@ strong correctness property we get for free from already having both halves.
 assumption); non-config facts a config can't carry (site name, intent); how to
 report parse gaps ("Not yet modeled:"-style, reuse the existing convention).
 
-### Feature: BGP support — NOT STARTED (overlaps WAN edge)
-`packages/schema/src/zod/routing.ts` already has a `bgp` field, but no composer
-sets it and no template renders it — today's designs are static or OSPF only.
-Tester asked specifically about **reconfiguring BGP**, which is brownfield
-(above), not greenfield.
+### Feature: BGP support — DECLINED for now (founder decision, 2026-07)
+**The tester's actual ask was a BGP *simulator for students/teaching*. Rejected:
+NetDesign.app is a design tool, not a lab/training tool.** Chasing it would make
+the product "do everything it isn't built for". Revisit only if the product is
+profitable AND multiple paying users ask — not on one request.
 
-Deliberately **overlaps the WAN-edge item**, whose open founder decision is
-exactly "PE-CE routing: BGP vs static". Do NOT build these twice — settle the
-WAN-edge routing decision first, implement BGP once (schema + composer +
-cisco-ios template + golden tests), and let both WAN edge and brownfield
-reconfigure consume it. Founder is the domain expert on the defaults (iBGP vs
-eBGP, AS numbering, route-reflection at scale) — ask before designing.
+**Important distinction to preserve** (don't read this as "no BGP ever"):
+- ❌ **Out of scope:** BGP simulation/teaching, lab scenarios, protocol tinkering.
+- ⚠️ **Still open, different thing:** the WAN-edge item's PE-CE routing decision.
+  If/when WAN edge is built, it needs *some* provider-facing routing. Given this
+  decision, **ship WAN edge with static PE-CE routing first** (common and correct
+  for simple MPLS branches) and treat BGP as a later option only if real designs
+  demand it. That keeps the WAN feature unblocked without building a BGP engine.
+
+`packages/schema/src/zod/routing.ts` has an unused `bgp` field — leave it; it's
+schema surface for later, not a promise.
 
 ## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
 
