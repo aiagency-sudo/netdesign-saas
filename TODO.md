@@ -1435,6 +1435,52 @@ data-driven build queue. Marker + extraction logic live in
 point). It's the natural next composer-shaped feature — same pattern as
 branch → campus. Depends on the founder answering the routing defaults in (4).
 
+## STRATEGIC SIGNAL (from beta feedback): brownfield > greenfield — REVIEW BEFORE PICKING NEXT FEATURE
+
+Three independent tester requests now point the same direction — engineers want
+to work with the network they **already have**, not only design a new one:
+1. "Can I upload a rough sketch and have it rebuilt?" → sketch-upload backlog.
+2. "Can a draft config/command set be uploaded and asked to produce a design?" → **config-to-design** (new, below).
+3. "Can I use the tool to reconfigure BGP and generate the design?" → **BGP support** (new, below).
+
+Greenfield "describe a network → get a design" is what we built; brownfield
+"here's my existing network → document/modify it" may be the larger market
+(most engineers maintain more than they green-field). Worth weighing this
+theme against the vendor-rollout order before committing the next big block.
+
+### Feature: config-to-design (brownfield import / reverse engineering) — NOT STARTED
+Upload existing or draft device configs → parse → produce a schema-valid design
+→ diagram + HLD + .vsdx (and optionally a cleaned/completed config set).
+
+**Why it fits the moat unusually well:** parsing a config is a *deterministic
+parser* problem, not an LLM problem. Interfaces, VLANs, IP/mask, HSRP groups,
+OSPF networks and BGP neighbors are all extractable with a grammar — the LLM is
+not needed for the core parse, only (optionally) to summarize intent. Same rule
+as everywhere else: parser proposes structure, engine validates and disposes.
+
+**Sketch:** vendor-specific parsers (start cisco-ios, reuse the config-gen view
+models in reverse) → `design-params`/`Design` → `parseDesign()` → existing
+render/export path. Round-trip test is the natural golden: render a G1/G2 config
+with config-gen, parse it back, and assert the design matches — a genuinely
+strong correctness property we get for free from already having both halves.
+
+**Open questions:** partial/draft configs (how much to infer vs. flag as an
+assumption); non-config facts a config can't carry (site name, intent); how to
+report parse gaps ("Not yet modeled:"-style, reuse the existing convention).
+
+### Feature: BGP support — NOT STARTED (overlaps WAN edge)
+`packages/schema/src/zod/routing.ts` already has a `bgp` field, but no composer
+sets it and no template renders it — today's designs are static or OSPF only.
+Tester asked specifically about **reconfiguring BGP**, which is brownfield
+(above), not greenfield.
+
+Deliberately **overlaps the WAN-edge item**, whose open founder decision is
+exactly "PE-CE routing: BGP vs static". Do NOT build these twice — settle the
+WAN-edge routing decision first, implement BGP once (schema + composer +
+cisco-ios template + golden tests), and let both WAN edge and brownfield
+reconfigure consume it. Founder is the domain expert on the defaults (iBGP vs
+eBGP, AS numbering, route-reflection at scale) — ask before designing.
+
 ## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
 
 **Priority: deliberately last.** Build only after the feedback-driven features
