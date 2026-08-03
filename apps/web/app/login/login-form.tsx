@@ -6,9 +6,18 @@ import { createClient } from "@/lib/supabase/client";
 import posthog from "posthog-js";
 
 /**
+ * Supabase's email OTP length is a per-project setting (Authentication ->
+ * Providers -> Email -> Email OTP Length), not a fixed 6. Accept the whole
+ * supported range so a project configured for 7-10 digits still works — a
+ * shorter maxLength would truncate the pasted code and fail every sign-in.
+ */
+const CODE_MIN_LENGTH = 6;
+const CODE_MAX_LENGTH = 10;
+
+/**
  * Two-step email sign-in, code-first.
  *
- * The 6-digit code is the PRIMARY method because it is immune to the two things
+ * The emailed code is the PRIMARY method because it is immune to the two things
  * that actually broke sign-in in practice:
  *  - link scanners / browser preloads consuming a single-use link before the
  *    human clicks it (the first /verify succeeds, the real click 403s), and
@@ -156,7 +165,7 @@ export function LoginForm({
         <form onSubmit={handleCodeSubmit} className="flex flex-col gap-3">
           <div className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <p>
-              We sent a 6-digit code to <span className="font-medium">{email}</span>
+              We sent a sign-in code to <span className="font-medium">{email}</span>
               {resent && " again"}.
             </p>
             <p className="mt-1 text-emerald-700">
@@ -165,24 +174,27 @@ export function LoginForm({
             </p>
           </div>
 
+          {/* Supabase's OTP length is a project setting (6-10 digits), so never
+              hard-code it: a maxLength shorter than the real code silently
+              truncates it and every sign-in fails with "token is invalid". */}
           <input
             type="text"
             required
             inputMode="numeric"
             autoComplete="one-time-code"
-            pattern="\d{6}"
-            maxLength={6}
+            pattern={`\\d{${CODE_MIN_LENGTH},${CODE_MAX_LENGTH}}`}
+            maxLength={CODE_MAX_LENGTH}
             autoFocus
             value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-            placeholder="123456"
-            aria-label="6-digit sign-in code"
-            className="rounded-md border border-slate-300 px-3 py-2 text-center font-mono text-lg tracking-[0.4em]"
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_MAX_LENGTH))}
+            placeholder="Enter the code"
+            aria-label="Sign-in code from your email"
+            className="rounded-md border border-slate-300 px-3 py-2 text-center font-mono text-lg tracking-[0.3em]"
           />
 
           <button
             type="submit"
-            disabled={status === "verifying" || code.length !== 6}
+            disabled={status === "verifying" || code.length < CODE_MIN_LENGTH}
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {status === "verifying" ? "Verifying..." : "Sign in"}
