@@ -1490,14 +1490,34 @@ possible because the repo owns both halves; it is the strongest correctness
 check in the codebase. Verified end-to-end that an imported design renders an
 HLD via doc-gen.
 
+**UI SHIPPED:**
+- `/projects/import` — drag-and-drop / picker multi-file upload (dedupes by
+  filename, shows line counts, optional site name because a config can't know
+  it). Copy states plainly that the configuration is never modified or replaced.
+- `/api/import` — parses, assembles, saves. Shares the generation rate limit
+  (importing creates a project, so it must not be an unmetered side door),
+  caps at 25 files / 2M chars, and emits a `design_imported` PostHog event with
+  `file_count`, `device_count`, `finding_count` and `finding_codes` (so the
+  most common findings are rankable the same way unmodeled requirements are).
+- **Findings tab** (`FindingsList`) — visually separated from the design,
+  split into "Worth reviewing" (warnings) vs "For your information", with a
+  standing note that the config was not changed. Warning count badges on the tab.
+- **Uploaded config tab** (`SourceConfigs`) — the files read back verbatim, so
+  the source of truth is always retrievable next to the documentation.
+- Both tabs appear ONLY for imported projects. **Regenerate is hidden for
+  imports** — there is no prompt to re-run, and it must never look like we are
+  rewriting the customer's configuration.
+- `0005_config_import.sql` — adds `projects.source_kind` (checked enum),
+  `source_configs`, `findings`, and `project_versions.findings`. Additive only;
+  existing prompt projects are untouched. **RUN THIS IN SUPABASE SQL EDITOR
+  before the deploy**, or imports will fail on the missing columns.
+
 **Still to do for this feature:**
-1. **UI**: upload page (multi-file), a findings panel visually separated from the
-   design, and wiring into projects/exports. Reuse `/api/generate`'s project
-   + version + PostHog plumbing; add a `design_imported` event.
-2. Persist the uploaded text (Supabase storage, owner-scoped) so the source of
-   truth is retrievable alongside the design.
-3. More vendors (FortiGate/PAN-OS parsers) once cisco-ios is proven with testers.
-4. Consider surfacing `unparsedLines` in the UI so coverage gaps are visible.
+1. More vendors (FortiGate/PAN-OS parsers) once cisco-ios is proven with testers.
+2. Surface `unparsedLines` in the UI so parser coverage gaps are visible per file
+   (currently only summarised in a finding + an assumption).
+3. Consider moving `source_configs` from a jsonb column to Supabase storage if
+   uploads get large — fine at current sizes, and jsonb keeps it transactional.
 
 ### (original scoping notes)
 Upload existing or draft device configs → parse → produce a schema-valid design
