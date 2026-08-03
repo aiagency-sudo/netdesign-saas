@@ -36,6 +36,9 @@ importers:
       '@netdesign/config-gen':
         specifier: workspace:*
         version: link:../../packages/config-gen
+      '@netdesign/config-parse':
+        specifier: workspace:*
+        version: link:../../packages/config-parse
       '@netdesign/design-engine':
         specifier: workspace:*
         version: link:../../packages/design-engine
@@ -122,6 +125,25 @@ importers:
       '@types/nunjucks':
         specifier: ^3.2.6
         version: 3.2.6
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@25.9.5)(lightningcss@1.32.0)
+
+  packages/config-parse:
+    dependencies:
+      '@netdesign/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@netdesign/config-gen':
+        specifier: workspace:*
+        version: link:../config-gen
+      '@netdesign/design-engine':
+        specifier: workspace:*
+        version: link:../design-engine
       typescript:
         specifier: ^5.6.3
         version: 5.9.3

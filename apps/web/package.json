@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@netdesign/config-gen": "workspace:*",
+    "@netdesign/config-parse": "workspace:*",
     "@netdesign/design-engine": "workspace:*",
     "@netdesign/doc-gen": "workspace:*",
     "@netdesign/llm-extraction": "workspace:*",

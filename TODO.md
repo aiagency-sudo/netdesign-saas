@@ -1448,7 +1448,78 @@ Greenfield "describe a network → get a design" is what we built; brownfield
 (most engineers maintain more than they green-field). Worth weighing this
 theme against the vendor-rollout order before committing the next big block.
 
-### Feature: config-to-design (brownfield import / reverse engineering) — NOT STARTED
+### Feature: config-to-design — CORE PACKAGE BUILT (`packages/config-parse`), UI NOT YET WIRED
+
+**Scope locked with founder (2026-07) — do not drift from this:**
+- ✅ Parse the uploaded config → produce a design + full documentation (diagram, HLD, .vsdx).
+- 🚫 **Never emit a replacement config.** The client's uploaded configuration is
+  the source of truth and is never overwritten or "corrected" into a new artifact.
+- 💡 **Recommendations only, clearly separated** — advisory findings, never
+  generated config lines.
+- 📄 All documentation describes **what was uploaded**, not an idealised version.
+
+**Shipped in `packages/config-parse`:**
+- `cisco-ios.ts` — deterministic IOS/IOS-XE parser (hostname, interfaces incl.
+  description/address/shutdown, trunks + allowed VLANs, access ports, SVIs,
+  dot1Q subinterfaces, HSRP group/vip/priority/preempt, VLAN database, OSPF
+  networks + passive-interface + default-information originate, static routes,
+  `ip routing`). Unrecognised lines go to `unparsedLines` — nothing is silently
+  dropped. Indentation-independent (uploads get reformatted in transit).
+- `roles.ts` — role inference from config *shape* (SVIs+trunks ⇒ distribution;
+  routed-only+OSPF+no switchports ⇒ core; dot1Q subinterfaces ⇒ router-on-a-stick;
+  switchports+no routing ⇒ access), each returning the evidence used.
+- `assemble.ts` — devices/segments/links/routing → `parseDesign()`-validated
+  `Design`. Links are inferred ONLY from routed interfaces sharing a subnet
+  (exact for point-to-point); **L2 trunk links are deliberately not guessed** —
+  a config doesn't record what a port is plugged into — and that limitation is
+  stated in `meta.assumptions`. Role guesses are recorded as assumptions too, so
+  the engineer can correct them.
+- `findings.ts` — advisory only, enforced by test: equal HSRP priorities,
+  inconsistent preempt, single-member HSRP, VLAN with no gateway, VLAN trunked
+  but undefined, shutdown-but-configured interfaces, duplicate addresses,
+  point-to-point subnets whose peer wasn't uploaded, ambiguous multi-device
+  subnets, and unparsed-line coverage.
+- `import.ts` — `importConfigs(uploads)` entry point + conservative
+  `detectVendor` that **refuses FortiGate/PAN-OS rather than half-parsing** them
+  into a misleading design.
+
+**Tests: 34 green.** The headline is the **round-trip property** — render G1/G2
+with config-gen, parse the configs back, and assert devices, roles, segment
+CIDRs/gateways, HSRP, OSPF areas and the 9-link campus fabric all survive. Only
+possible because the repo owns both halves; it is the strongest correctness
+check in the codebase. Verified end-to-end that an imported design renders an
+HLD via doc-gen.
+
+**UI SHIPPED:**
+- `/projects/import` — drag-and-drop / picker multi-file upload (dedupes by
+  filename, shows line counts, optional site name because a config can't know
+  it). Copy states plainly that the configuration is never modified or replaced.
+- `/api/import` — parses, assembles, saves. Shares the generation rate limit
+  (importing creates a project, so it must not be an unmetered side door),
+  caps at 25 files / 2M chars, and emits a `design_imported` PostHog event with
+  `file_count`, `device_count`, `finding_count` and `finding_codes` (so the
+  most common findings are rankable the same way unmodeled requirements are).
+- **Findings tab** (`FindingsList`) — visually separated from the design,
+  split into "Worth reviewing" (warnings) vs "For your information", with a
+  standing note that the config was not changed. Warning count badges on the tab.
+- **Uploaded config tab** (`SourceConfigs`) — the files read back verbatim, so
+  the source of truth is always retrievable next to the documentation.
+- Both tabs appear ONLY for imported projects. **Regenerate is hidden for
+  imports** — there is no prompt to re-run, and it must never look like we are
+  rewriting the customer's configuration.
+- `0005_config_import.sql` — adds `projects.source_kind` (checked enum),
+  `source_configs`, `findings`, and `project_versions.findings`. Additive only;
+  existing prompt projects are untouched. **RUN THIS IN SUPABASE SQL EDITOR
+  before the deploy**, or imports will fail on the missing columns.
+
+**Still to do for this feature:**
+1. More vendors (FortiGate/PAN-OS parsers) once cisco-ios is proven with testers.
+2. Surface `unparsedLines` in the UI so parser coverage gaps are visible per file
+   (currently only summarised in a finding + an assumption).
+3. Consider moving `source_configs` from a jsonb column to Supabase storage if
+   uploads get large — fine at current sizes, and jsonb keeps it transactional.
+
+### (original scoping notes)
 Upload existing or draft device configs → parse → produce a schema-valid design
 → diagram + HLD + .vsdx (and optionally a cleaned/completed config set).
 
@@ -1468,18 +1539,22 @@ strong correctness property we get for free from already having both halves.
 assumption); non-config facts a config can't carry (site name, intent); how to
 report parse gaps ("Not yet modeled:"-style, reuse the existing convention).
 
-### Feature: BGP support — NOT STARTED (overlaps WAN edge)
-`packages/schema/src/zod/routing.ts` already has a `bgp` field, but no composer
-sets it and no template renders it — today's designs are static or OSPF only.
-Tester asked specifically about **reconfiguring BGP**, which is brownfield
-(above), not greenfield.
+### Feature: BGP support — DECLINED for now (founder decision, 2026-07)
+**The tester's actual ask was a BGP *simulator for students/teaching*. Rejected:
+NetDesign.app is a design tool, not a lab/training tool.** Chasing it would make
+the product "do everything it isn't built for". Revisit only if the product is
+profitable AND multiple paying users ask — not on one request.
 
-Deliberately **overlaps the WAN-edge item**, whose open founder decision is
-exactly "PE-CE routing: BGP vs static". Do NOT build these twice — settle the
-WAN-edge routing decision first, implement BGP once (schema + composer +
-cisco-ios template + golden tests), and let both WAN edge and brownfield
-reconfigure consume it. Founder is the domain expert on the defaults (iBGP vs
-eBGP, AS numbering, route-reflection at scale) — ask before designing.
+**Important distinction to preserve** (don't read this as "no BGP ever"):
+- ❌ **Out of scope:** BGP simulation/teaching, lab scenarios, protocol tinkering.
+- ⚠️ **Still open, different thing:** the WAN-edge item's PE-CE routing decision.
+  If/when WAN edge is built, it needs *some* provider-facing routing. Given this
+  decision, **ship WAN edge with static PE-CE routing first** (common and correct
+  for simple MPLS branches) and treat BGP as a later option only if real designs
+  demand it. That keeps the WAN feature unblocked without building a BGP engine.
+
+`packages/schema/src/zod/routing.ts` has an unused `bgp` field — leave it; it's
+schema surface for later, not a promise.
 
 ## BACKLOG (LAST — after other feedback-driven features): knowledge ingestion pipeline — NOT STARTED
 
