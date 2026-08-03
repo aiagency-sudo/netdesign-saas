@@ -1,4 +1,4 @@
-import { parseCiscoIosConfig } from "./cisco-ios.js";
+import { parseCiscoIosConfig, splitDeviceConfigs } from "./cisco-ios.js";
 import { assembleDesign, type AssembleOptions, type ConfigToDesignResult } from "./assemble.js";
 import type { ParsedDevice } from "./types.js";
 
@@ -41,7 +41,10 @@ export function importConfigs(uploads: UploadedConfig[], options: AssembleOption
     throw new UnsupportedConfigError("Upload at least one device configuration file.");
   }
 
-  const parsed: ParsedDevice[] = uploads.map((upload) => {
+  // One uploaded file may hold several devices (engineers concatenate a whole
+  // site, and our own "Download configs" export does exactly that), so each file
+  // is split into per-device sections before parsing — see splitDeviceConfigs.
+  const parsed: ParsedDevice[] = uploads.flatMap((upload) => {
     if (upload.text.trim() === "") {
       throw new UnsupportedConfigError(`${upload.name} is empty.`);
     }
@@ -51,7 +54,7 @@ export function importConfigs(uploads: UploadedConfig[], options: AssembleOption
         `${upload.name} doesn't look like a Cisco IOS / IOS-XE configuration. Only Cisco IOS configs can be imported today.`,
       );
     }
-    return parseCiscoIosConfig(upload.text, upload.name);
+    return splitDeviceConfigs(upload.text).map((section) => parseCiscoIosConfig(section, upload.name));
   });
 
   return assembleDesign(parsed, options);
