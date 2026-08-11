@@ -1,5 +1,6 @@
 import type { Design, Device } from "@netdesign/schema";
 import { cidrToIpAndMask } from "./cidr.js";
+import { routerPeerIp } from "./peers.js";
 
 /**
  * FortiOS uses `#` for comments (not cisco's `!`), so the mandated
@@ -76,33 +77,4 @@ export function buildFortiGateView(device: Device, design: Design): FortiGateVie
   }
 
   return { banner: FORTIGATE_BANNER, hostname: device.hostname ?? device.id, interfaces, staticRoutes };
-}
-
-/** Finds the IP of the router on the far end of this firewall interface's P2P link — the ECMP next hop toward the LAN. */
-function routerPeerIp(device: Device, ifaceName: string, design: Design): string | null {
-  for (const link of design.links) {
-    const [aId, aIface] = splitEndpoint(link.a);
-    const [bId, bIface] = splitEndpoint(link.b);
-
-    let peerId: string | undefined;
-    let peerIface: string | undefined;
-    if (aId === device.id && aIface === ifaceName) {
-      [peerId, peerIface] = [bId, bIface];
-    } else if (bId === device.id && bIface === ifaceName) {
-      [peerId, peerIface] = [aId, aIface];
-    } else {
-      continue;
-    }
-
-    const peer = design.devices.find((d) => d.id === peerId);
-    if (peer?.role !== "router") return null;
-    const iface = (peer.interfaces ?? []).find((i) => i.name === peerIface);
-    return iface?.ip ? cidrToIpAndMask(iface.ip).ip : null;
-  }
-  return null;
-}
-
-function splitEndpoint(endpoint: string): [string, string | undefined] {
-  const [id, iface] = endpoint.split(":");
-  return [id ?? endpoint, iface];
 }

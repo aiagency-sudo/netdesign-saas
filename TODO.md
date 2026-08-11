@@ -1195,6 +1195,8 @@ inside interfaces. The founder reviewed the full rendered G1 output line-by-line
 the cisco-ios sign-off.
 
 **Next vendor:** paloalto-panos (BUILD_PLAN Session 16), by tester vote.
+→ **Now built** — see "Phase 2 vendor rollout: paloalto-panos config-gen" near
+the end of this file (awaiting your line-by-line review).
 
 ## SCOPING: campus / multi-tier composer (next big composer) — IN PROGRESS
 
@@ -1627,6 +1629,80 @@ still disposes (deterministic IP/VLAN, template-render-only configs).
 an ingestion/review workflow (draft → human approve → test → publish); provenance
 tracking (which template/rule came from which source); and the extraction-side
 RAG index. Sizeable — treat as a mini-project, not a single increment.
+
+## Next step (Phase 2 vendor rollout: paloalto-panos config-gen) — BUILT, **NEEDS FOUNDER LINE-BY-LINE REVIEW**
+
+Third vendor per BUILD_PLAN Session 16. Chosen as the next increment because
+the extractor **already emits `paloalto-panos` firewalls** (there's a Palo Alto
+few-shot in `packages/llm-extraction/src/prompt.ts`) while config-gen had no
+template — so a user who said "Palo Alto at the edge" got a design, diagram,
+HLD and .vsdx but **silently no firewall config**. That gap is now closed.
+
+**Posture: deliberately identical to the founder-approved FortiGate posture,
+expressed in PAN-OS `set` syntax** — no new design opinions were invented:
+- `ethernet1/1` = WAN, DHCP client (`create-default-route yes`).
+- Each modeled router-facing interface = a static inside port (`ethernet1/2`,
+  `ethernet1/3`, …) with its real /31, in CIDR form (PAN-OS takes a prefix, so
+  no netmask conversion).
+- Zones: WAN in `untrust`, every inside port in `trust`.
+- Static route to each VLAN subnet via BOTH router /31 peer IPs, with
+  `ecmp enable yes` on the `default` virtual router **only when there is more
+  than one next hop** (G4's single router gets no ECMP line).
+- **No security policies, no NAT** — same as FortiGate. PAN-OS therefore
+  denies interzone traffic until the engineer writes policy; that is the
+  intended "base config, validate in a lab" posture, not an oversight.
+
+**Files (`packages/config-gen`):**
+- `src/panos-view.ts` (new): `buildPanOsView()` + the PAN-OS constants
+  (`PANOS_BANNER`, zones, `allow-ping` profile, `default` VR, metric 10).
+- `templates/paloalto-panos/firewall.njk` (new): fully-expanded `set` format —
+  one leaf per line, the way a real device's "set format" export reads, rather
+  than the compressed one-liner form. Safer to paste, easier to review.
+- `src/peers.ts` (new): `splitEndpoint` / `peerEndpointOf` / `peerDeviceIdOf` /
+  `routerPeerIp` were duplicated in `fortigate-view.ts` and `view-models.ts`;
+  both now import one tested copy. FortiGate output is byte-identical (its
+  snapshot didn't move).
+- `src/render.ts`: `renderPanOsConfig()`; `renderAllConfigs()` dispatches
+  paloalto-panos firewalls, so the web **Download configs** button includes them.
+- `test/panos.test.ts` (new, 17 tests) + `test/fixtures.ts` gains
+  `g1PanosDesign` / `g4PanosDesign` (G1/G4 with a Palo Alto edge — identical
+  topology to the FortiGate fixtures, so any output difference is purely a
+  vendor difference). Snapshot of the whole G1 PAN-OS config is the review
+  artifact: `test/__snapshots__/panos.test.ts.snap`.
+- `apps/web/.../configs/route.ts`: "no supported devices" message updated.
+- config-gen 48 → 65 tests. Full workspace green (build + test + test:golden +
+  typecheck + web lint).
+
+**FOUNDER REVIEW CHECKLIST — these are the calls I made; please confirm or correct:**
+1. **Banner as `#`.** Same deviation you approved for FortiOS: `!` is not a
+   PAN-OS comment. `#` is the convention in Palo Alto set-command snippets, but
+   confirm it survives a paste into `configure` mode on your box — if PAN-OS
+   rejects it, the fix is to emit the banner as a `set deviceconfig system
+   ... ` -free leading comment stripped by the user, or drop to a README note.
+2. **`set vsys vsys1 import network interface …` lines are included** so the
+   zone/VR assignments are valid on a multi-vsys-capable box. Harmless on a
+   single-vsys firewall in my reading — confirm. (The matching
+   `set vsys vsys1 import network virtual-router default` line is **not**
+   emitted; the `default` VR is already imported out of the box.)
+3. **`interface-management-profile allow-ping`** on inside ports only — the
+   PAN-OS analogue of the `set allowaccess ping` you approved for FortiGate.
+   Nothing is permitted on the WAN interface.
+4. **Static-route naming** `<segment>-via-<interface>` with `/` → `-`
+   (e.g. `corp-data-via-ethernet1-2`), since PAN-OS object names disallow `/`.
+   Collisions get a numeric suffix. Readable in the GUI — confirm you like it.
+5. **`metric 10`** emitted explicitly (PAN-OS's own default) so the config is
+   self-describing. Say the word and it comes out.
+6. **ECMP algorithm not specified** — only `ecmp enable yes`, leaving PAN-OS's
+   default (ip-modulo). Confirm, or name the algorithm you want.
+
+**Known follow-ups (not in this increment):**
+- The multi-device combined download (`/api/projects/[id]/configs`) separates
+  devices with a `!`-prefixed cisco-style header. That line is invalid in both
+  FortiOS and PAN-OS pastes (pre-existing since FortiGate shipped, not new
+  here). Small fix: per-vendor comment character in the section rule.
+- `packages/config-parse` still **refuses** PAN-OS uploads rather than
+  half-parsing them — unchanged and still correct; a PAN-OS *parser* is a
+  separate piece of work from this *generator*.
 
 ## Notes / decisions made without asking (boring-option calls)
 

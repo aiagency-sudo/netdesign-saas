@@ -29,8 +29,13 @@ roadmap view.
   custom domain `app.jactictservices.com` wired (Vercel + Hostinger DNS + Resend
   SMTP + Supabase auth URLs).
 - **Phase 2 vendor rollout — fortinet-fortigate DONE (ahead of schedule),
-  founder-reviewed.** paloalto-panos still pending (see Session 16 below).
-- **Next up:** Phase 2 beta recruiting + watch the PostHog funnels.
+  founder-reviewed. paloalto-panos DONE, awaiting founder line-by-line review**
+  (see Session 16 below). That closes Phase 2's vendor list.
+- **Pulled forward from the brownfield backlog:** the **campus three-tier**
+  composer (G2: core + distribution + L2 access, HSRP SVIs, OSPF) and
+  **config-to-design import** (`packages/config-parse` + upload UI) are built.
+- **Next up:** Phase 2 beta recruiting + watch the PostHog funnels; then pick
+  the next feature from the brownfield-vs-vendor-rollout weighing in TODO.md.
 
 ---
 
@@ -106,7 +111,11 @@ Goal: 15–30 testers; brutal feedback; the config feature validated.
   * **fortinet-fortigate — DONE** (edge firewall base config: WAN as DHCP
     client, static inside ports, ECMP static routes to each VLAN subnet via
     both HSRP routers, no policies; founder-reviewed the rendered G1 output).
-  * paloalto-panos — pending (next vendor).
+  * **paloalto-panos — DONE, pending founder review** (edge firewall base
+    config in `set` format: ethernet1/1 as DHCP client, static inside ports,
+    untrust/trust zones, ECMP static routes to each VLAN subnet via both HSRP
+    routers, no security policies and no NAT — the same posture approved for
+    FortiGate). Review checklist is in TODO.md.
 - BETA EXIT CRITERIA (do not charge money before these):
   * ≥70% of testers: vsdx opens cleanly, ≤15 min cleanup
   * ≥50% of testers who downloaded a config say it's a usable starting point
