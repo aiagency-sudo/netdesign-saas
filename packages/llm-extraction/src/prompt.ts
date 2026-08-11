@@ -9,7 +9,7 @@ export const TOOL_DESCRIPTION =
   "Supported topologies: branch-office and smb-flat (N redundant routers, M access switches, an " +
   "optional edge firewall, a flat set of VLANs) and campus-three-tier (a three-tier campus: an " +
   "optional edge firewall and redundant routers, a pure-L3 core pair, an HSRP distribution pair that " +
-  "serves as the VLAN gateways, and L2 access switches).";
+  "serves as the VLAN gateways, L2 access switches, and an optional wireless LAN controller).";
 
 /**
  * JSON Schema for the extraction tool's input, derived directly from
@@ -133,22 +133,28 @@ const EXAMPLES: FewShotExample[] = [
       "Design a campus for our headquarters. We want the classic three-tier: a redundant core, a pair of " +
       "distribution switches acting as the layer-3 gateways for the user VLANs, and about six access switches " +
       "across the floors. Two edge routers behind a FortiGate for the internet edge. Users need a data VLAN and " +
-      "a voice VLAN for the phones.",
+      "a voice VLAN for the phones. Wifi is run from a central wireless controller with about 40 access points, " +
+      "and staff wifi should sit on its own subnet.",
     params: designParamsSchema.parse({
       designPattern: "campus-three-tier",
       siteName: "Headquarters Campus",
       intentSummary:
-        "Three-tier campus: dual edge routers behind a FortiGate, a redundant L3 core, an HSRP distribution pair as the VLAN gateways, and six access switches serving data and voice VLANs.",
+        "Three-tier campus: dual edge routers behind a FortiGate, a redundant L3 core, an HSRP distribution pair as the VLAN gateways, six access switches serving data, voice and staff-wifi VLANs, and a central wireless controller.",
       router: { count: 2, redundancy: "hsrp", vendorHint: "cisco-ios" },
       accessSwitch: { count: 6, vendorHint: "cisco-ios" },
       firewall: { present: true, vendorHint: "fortinet-fortigate" },
       coreSwitch: { count: 2, vendorHint: "cisco-ios" },
       distributionSwitch: { count: 2, vendorHint: "cisco-ios" },
+      wirelessController: { present: true, vendorHint: "cisco-ios" },
       vlans: [
         { name: "corp-data", purpose: "user", dhcp: true },
         { name: "voice", purpose: "voice", dhcp: true },
+        { name: "staff-wifi", purpose: "user", dhcp: true },
       ],
-      assumptions: ["No IP address range was given; the engine will assign one."],
+      assumptions: [
+        "No IP address range was given; the engine will assign one.",
+        "Not yet modeled: the 40 access points — the controller is modeled, individual APs and RF coverage are not.",
+      ],
     }),
   },
   {
@@ -200,10 +206,15 @@ are the layer-3 gateways for the user VLANs. Reach for it when the user talks ab
 campus, or SVIs on the distribution switches; otherwise prefer a flat pattern. Prefer the pattern that matches what the \
 user described, but let router.count/redundancy be the source of truth.
 - For "campus-three-tier", set coreSwitch and distributionSwitch (a pair each); leave them unset for the flat patterns.
+- Set wirelessController.present on a campus when the user mentions a wireless controller / WLC / centrally-managed \
+wifi. The controller is modeled as a device trunked to the distribution pair; individual access points are not \
+modeled, so if the user gave AP counts or coverage requirements, record that as its own "Not yet modeled:" \
+assumption. A wireless SSID that needs its own subnet is just a VLAN — add it to "vlans" like any other. \
+wirelessController belongs to campus-three-tier only; for a flat pattern, treat a controller as unmodeled.
 - Every fact you had to guess because the user didn't state it belongs in "assumptions" as a plain sentence — \
 this is what gets shown back to the user for confirmation, so it must be human-readable, not a code.
 - If the user states a requirement the design-params here CANNOT represent — e.g. WAN/MPLS/SD-WAN circuits, a \
-connection to another site or a data centre, QoS, specific provider/WAN routing, wireless controllers, load \
+connection to another site or a data centre, QoS, specific provider/WAN routing, individual access points, load \
 balancers — do NOT silently drop it and do NOT pretend the design covers it. Design the part you can (the LAN and \
 edge), and record EACH unmodeled requirement as its own "assumptions" sentence beginning literally with \
 "Not yet modeled:" so the user can see exactly what was set aside (e.g. "Not yet modeled: the two MPLS circuits to \

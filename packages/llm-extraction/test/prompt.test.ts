@@ -42,6 +42,15 @@ describe("extraction prompt", () => {
     );
   });
 
+  it("exposes the optional campus-only blocks the composer understands", () => {
+    const properties = toolInputSchema["properties"] as Record<string, unknown>;
+    for (const optional of ["coreSwitch", "distributionSwitch", "wirelessController"]) {
+      expect(properties).toHaveProperty(optional);
+    }
+    // Optional: a flat design must not be forced to declare them.
+    expect(toolInputSchema["required"]).not.toContain("wirelessController");
+  });
+
   it("restricts designPattern to the patterns the composer supports", () => {
     const properties = toolInputSchema["properties"] as Record<string, { enum?: string[] }>;
     expect(new Set(properties["designPattern"]!.enum)).toEqual(
