@@ -1,18 +1,23 @@
-import type { Finding } from "@netdesign/config-parse";
+import type { Finding } from "@netdesign/schema";
 
 /**
- * Advisory observations about an imported configuration.
+ * Advisory observations about imported material.
  *
- * Deliberately styled and worded as commentary, NOT as design output: findings
- * describe things the engineer may want to look at in their own configuration.
- * The uploaded config is the source of truth and is never changed, so nothing
- * here is a fix to apply, and no generated configuration lines are ever shown.
+ * Deliberately styled and worded as commentary, NOT as design output. Two
+ * sources share this list and the same rule holds for both: nothing here has
+ * been applied, and no generated configuration is ever shown.
+ *  - config-import: things to look at in the configuration you uploaded, which
+ *    is the source of truth and is never rewritten.
+ *  - sketch-import: corrections recommended for the diagram you uploaded. The
+ *    design reflects what you drew; taking up a recommendation is your call.
  */
-export function FindingsList({ findings }: { findings: Finding[] }) {
+export function FindingsList({ findings, source = "config" }: { findings: Finding[]; source?: "config" | "sketch" }) {
   if (findings.length === 0) {
     return (
       <p className="text-sm text-slate-500">
-        No advisory findings — nothing in the uploaded configuration stood out for review.
+        {source === "sketch"
+          ? "No recommended changes — nothing in the diagram stood out for review."
+          : "No advisory findings — nothing in the uploaded configuration stood out for review."}
       </p>
     );
   }
@@ -23,12 +28,17 @@ export function FindingsList({ findings }: { findings: Finding[] }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
-        These are observations about the configuration you uploaded — things you may want to review. Your
-        configuration has not been changed, and no replacement configuration was generated.
+        {source === "sketch"
+          ? "These are changes we would recommend to the network you drew. None of them have been applied — the design reflects your diagram as it is, and acting on a recommendation is your decision."
+          : "These are observations about the configuration you uploaded — things you may want to review. Your configuration has not been changed, and no replacement configuration was generated."}
       </p>
 
-      {warnings.length > 0 && <Group title="Worth reviewing" findings={warnings} tone="warning" />}
-      {infos.length > 0 && <Group title="For your information" findings={infos} tone="info" />}
+      {warnings.length > 0 && (
+        <Group title={source === "sketch" ? "Recommended changes" : "Worth reviewing"} findings={warnings} tone="warning" />
+      )}
+      {infos.length > 0 && (
+        <Group title={source === "sketch" ? "Smaller suggestions" : "For your information"} findings={infos} tone="info" />
+      )}
     </div>
   );
 }

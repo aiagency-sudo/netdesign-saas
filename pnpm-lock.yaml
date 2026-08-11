@@ -48,6 +48,9 @@ importers:
       '@netdesign/doc-gen':
         specifier: workspace:*
         version: link:../../packages/doc-gen
+      '@netdesign/doc-ingest':
+        specifier: workspace:*
+        version: link:../../packages/doc-ingest
       '@netdesign/llm-extraction':
         specifier: workspace:*
         version: link:../../packages/llm-extraction

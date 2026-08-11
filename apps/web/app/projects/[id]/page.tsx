@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { fileCoverage, parseUploads, type FileParseCoverage, type Finding } from "@netdesign/config-parse";
+import { fileCoverage, parseUploads, type FileParseCoverage } from "@netdesign/config-parse";
+import type { Finding } from "@netdesign/schema";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectTabs } from "@/components/ProjectTabs";
 import { RegenerateForm } from "@/components/RegenerateForm";
@@ -45,8 +46,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     createdAt: row.created_at,
   }));
 
-  const isImport = project.source_kind === "config-import";
-  const sourceConfigs = (project.source_configs ?? undefined) as SourceConfig[] | undefined;
+  const isConfigImport = project.source_kind === "config-import";
+  const isSketchImport = project.source_kind === "sketch-import";
+  const isImport = isConfigImport || isSketchImport;
+  // Only a config import has readable configuration behind source_configs; a
+  // sketch import stores a file manifest there, which is not a config viewer's
+  // input and must never be handed to one.
+  const sourceConfigs = isConfigImport ? ((project.source_configs ?? undefined) as SourceConfig[] | undefined) : undefined;
   const findings = (project.findings ?? undefined) as Finding[] | undefined;
   const coverage = sourceConfigs ? parseCoverageOf(sourceConfigs) : undefined;
 
@@ -57,7 +63,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
           {isImport && (
             <p className="mb-1 inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              Imported from configuration
+              {isSketchImport ? "Imported from a diagram" : "Imported from configuration"}
             </p>
           )}
           <p className="whitespace-pre-wrap text-sm text-slate-500">{project.prompt}</p>
@@ -97,6 +103,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           {...(findings ? { findings } : {})}
           {...(sourceConfigs ? { sourceConfigs } : {})}
           {...(coverage ? { coverage } : {})}
+          {...(isSketchImport ? ({ findingsSource: "sketch" } as const) : {})}
         />
       ) : (
         <p className="text-sm text-slate-500">No design generated yet.</p>

@@ -15,6 +15,7 @@
     "@netdesign/config-parse": "workspace:*",
     "@netdesign/design-engine": "workspace:*",
     "@netdesign/doc-gen": "workspace:*",
+    "@netdesign/doc-ingest": "workspace:*",
     "@netdesign/llm-extraction": "workspace:*",
     "@netdesign/schema": "workspace:*",
     "@supabase/ssr": "^0.12.3",

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { Design } from "@netdesign/schema";
-import type { FileParseCoverage, Finding } from "@netdesign/config-parse";
+import type { Design, Finding } from "@netdesign/schema";
+import type { FileParseCoverage } from "@netdesign/config-parse";
 import { AssumptionsList } from "./AssumptionsList";
 import { DesignCanvas } from "./DesignCanvas";
 import { DeviceListTable } from "./DeviceListTable";
@@ -18,17 +18,21 @@ const BASE_TABS = [
   { id: "assumptions", label: "Assumptions" },
 ] as const;
 
-/** Only meaningful for a config-import project — hidden entirely for prompt-generated designs. */
-const IMPORT_TABS = [
-  { id: "findings", label: "Findings" },
-  { id: "source", label: "Uploaded config" },
-] as const;
+/**
+ * Import-only tabs, shown independently: a config-import project has both
+ * (findings + the configs it was built from), a sketch-import project has only
+ * recommendations — there is no config to read back, so no viewer.
+ */
+const FINDINGS_TAB = { id: "findings", label: "Findings" } as const;
+const RECOMMENDATIONS_TAB = { id: "findings", label: "Recommendations" } as const;
+const SOURCE_TAB = { id: "source", label: "Uploaded config" } as const;
 
 const VERSIONS_TAB = { id: "versions", label: "Versions" } as const;
 
 type Tab =
   | (typeof BASE_TABS)[number]["id"]
-  | (typeof IMPORT_TABS)[number]["id"]
+  | typeof FINDINGS_TAB.id
+  | typeof SOURCE_TAB.id
   | typeof VERSIONS_TAB.id;
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
@@ -55,19 +59,28 @@ export function ProjectTabs({
   findings,
   sourceConfigs,
   coverage,
+  findingsSource = "config",
 }: {
   projectId: string;
   design: Design;
   versions: VersionSummary[];
   currentVersionId: string | null;
-  /** Present only for config-import projects. */
+  /** Config-import findings, or sketch-import recommended corrections. */
   findings?: Finding[];
+  /** Config-import only — a sketch project has no configuration to read back. */
   sourceConfigs?: SourceConfig[];
   coverage?: FileParseCoverage[];
+  findingsSource?: "config" | "sketch";
 }) {
   const [tab, setTab] = useState<Tab>("diagram");
-  const isImport = sourceConfigs !== undefined && sourceConfigs.length > 0;
-  const tabs = [...BASE_TABS, ...(isImport ? IMPORT_TABS : []), VERSIONS_TAB];
+  const hasFindings = findings !== undefined;
+  const hasSourceConfigs = sourceConfigs !== undefined && sourceConfigs.length > 0;
+  const tabs = [
+    ...BASE_TABS,
+    ...(hasFindings ? [findingsSource === "sketch" ? RECOMMENDATIONS_TAB : FINDINGS_TAB] : []),
+    ...(hasSourceConfigs ? [SOURCE_TAB] : []),
+    VERSIONS_TAB,
+  ];
   const warningCount = (findings ?? []).filter((finding) => finding.severity === "warning").length;
 
   return (
@@ -88,7 +101,7 @@ export function ProjectTabs({
       {tab === "ip-plan" && <IpPlanTable design={design} />}
       {tab === "devices" && <DeviceListTable design={design} />}
       {tab === "assumptions" && <AssumptionsList design={design} />}
-      {tab === "findings" && <FindingsList findings={findings ?? []} />}
+      {tab === "findings" && <FindingsList findings={findings ?? []} source={findingsSource} />}
       {tab === "source" && <SourceConfigs configs={sourceConfigs ?? []} coverage={coverage ?? []} />}
       {tab === "versions" && (
         <VersionHistory projectId={projectId} versions={versions} currentVersionId={currentVersionId} />
