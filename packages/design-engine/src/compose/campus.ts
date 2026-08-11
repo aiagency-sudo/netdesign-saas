@@ -40,7 +40,15 @@ export function composeCampusDesign(params: DesignParams): Design {
   const coreIds = idsFor("core", params.coreSwitch?.count ?? DEFAULT_CORE_COUNT);
   const distIds = idsFor("dist", params.distributionSwitch?.count ?? DEFAULT_DIST_COUNT);
   const accessIds = idsFor("acc", params.accessSwitch.count);
-  const managedDeviceIds = [...(firewallId ? [firewallId] : []), ...routerIds, ...coreIds, ...distIds, ...accessIds];
+  const wlcId = params.wirelessController?.present ? "wlc-01" : null;
+  const managedDeviceIds = [
+    ...(firewallId ? [firewallId] : []),
+    ...routerIds,
+    ...coreIds,
+    ...distIds,
+    ...accessIds,
+    ...(wlcId ? [wlcId] : []),
+  ];
 
   const roleById = new Map<string, DeviceRole>();
   if (firewallId) roleById.set(firewallId, "firewall");
@@ -48,6 +56,7 @@ export function composeCampusDesign(params: DesignParams): Design {
   coreIds.forEach((id) => roleById.set(id, "core-switch"));
   distIds.forEach((id) => roleById.set(id, "distribution-switch"));
   accessIds.forEach((id) => roleById.set(id, "access-switch"));
+  if (wlcId) roleById.set(wlcId, "wireless-controller");
 
   const vendorHintById = new Map<string, VendorHint>();
   if (firewallId) vendorHintById.set(firewallId, params.firewall.vendorHint);
@@ -55,13 +64,21 @@ export function composeCampusDesign(params: DesignParams): Design {
   coreIds.forEach((id) => vendorHintById.set(id, params.coreSwitch?.vendorHint ?? "cisco-ios"));
   distIds.forEach((id) => vendorHintById.set(id, params.distributionSwitch?.vendorHint ?? "cisco-ios"));
   accessIds.forEach((id) => vendorHintById.set(id, params.accessSwitch.vendorHint));
+  if (wlcId) vendorHintById.set(wlcId, params.wirelessController?.vendorHint ?? "cisco-ios");
 
-  const logicalLinks = buildCampusLinks({ firewallId, routerIds, coreIds, distIds, accessIds });
+  const logicalLinks = buildCampusLinks({ firewallId, routerIds, coreIds, distIds, accessIds, wlcId });
   const vlanIds = assignVlanIds(params.vlans);
 
   const siteSupernet = params.siteSupernet ?? DEFAULT_SITE_SUPERNET;
   if (!params.siteSupernet) {
     assumptions.push(`No site address range was specified; assumed ${DEFAULT_SITE_SUPERNET}.`);
+  }
+
+  if (wlcId) {
+    assumptions.push(
+      `The wireless controller (${wlcId}) is trunked to both distribution switches and managed from the management network; ` +
+        "access points, RF/site survey and WLAN-to-VLAN mapping are not modeled.",
+    );
   }
 
   // VLAN gateways are HSRP SVIs on the distribution pair, so both distribution
@@ -171,6 +188,7 @@ function buildCampusLinks(input: {
   coreIds: string[];
   distIds: string[];
   accessIds: string[];
+  wlcId: string | null;
 }): LogicalLink[] {
   const links: LogicalLink[] = [];
 
@@ -206,6 +224,21 @@ function buildCampusLinks(input: {
   for (const accessId of input.accessIds) {
     for (const distId of input.distIds) {
       links.push({ id: `${accessId}--${distId}`, a: accessId, b: distId, kind: "ethernet", label: "Access trunk" });
+    }
+  }
+
+  // Wireless controller trunked to both distribution switches. Deliberately
+  // LAST: assignInterfaces anchors a distribution switch's SVIs to the first
+  // trunk it is given, and those SVIs belong on the access-facing trunk.
+  if (input.wlcId) {
+    for (const distId of input.distIds) {
+      links.push({
+        id: `${input.wlcId}--${distId}`,
+        a: input.wlcId,
+        b: distId,
+        kind: "ethernet",
+        label: "Wireless controller trunk",
+      });
     }
   }
 

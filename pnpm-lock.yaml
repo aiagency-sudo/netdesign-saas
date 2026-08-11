@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@netdesign/config-gen':
+        specifier: workspace:*
+        version: link:packages/config-gen
       '@netdesign/design-engine':
         specifier: workspace:*
         version: link:packages/design-engine

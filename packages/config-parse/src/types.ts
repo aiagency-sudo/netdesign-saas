@@ -69,6 +69,13 @@ export interface ParsedDevice {
   ipRoutingEnabled: boolean;
   /** Config lines the parser did not understand — surfaced so nothing is silently ignored. */
   unparsedLines: string[];
+  /**
+   * How many config lines the parser actually looked at — every line except
+   * blanks, `!` comments and `end`. Recorded here, where the skip rule lives,
+   * so coverage ("12 of 143 lines not recognised") can be reported without a
+   * second copy of that rule drifting out of sync.
+   */
+  consideredLineCount: number;
   /** The original text, kept verbatim. The uploaded config is the source of truth and is never rewritten. */
   sourceText: string;
   /** Filename it came from, for reporting. */

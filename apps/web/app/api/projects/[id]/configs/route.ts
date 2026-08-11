@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { renderAllConfigs } from "@netdesign/config-gen";
+import { combineConfigs, renderAllConfigs } from "@netdesign/config-gen";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slugify";
 import { getPostHogClient } from "@/lib/posthog-server";
-
-const SECTION_RULE = "!".padEnd(60, "=");
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,15 +32,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(
       {
         error:
-          "No devices in this design have a supported vendor/role for config generation yet (cisco-ios routers and access switches, plus fortinet-fortigate firewalls).",
+          "No devices in this design have a supported vendor/role for config generation yet (cisco-ios routers and switches, plus fortinet-fortigate and paloalto-panos firewalls).",
       },
       { status: 422 },
     );
   }
 
-  const combined = deviceIds
-    .map((deviceId) => `${SECTION_RULE}\n! Device: ${deviceId}\n${SECTION_RULE}\n\n${configs[deviceId]}`)
-    .join("\n\n");
+  // Section headers use each device's own comment character (config-gen owns
+  // that rule) — a `!` header is invalid pasted into a FortiGate or PAN-OS.
+  const combined = combineConfigs(project.design_json, configs);
 
   const posthog = getPostHogClient();
   if (posthog) {

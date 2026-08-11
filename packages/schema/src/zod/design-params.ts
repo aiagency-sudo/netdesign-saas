@@ -52,6 +52,19 @@ export const designParamsSchema = z.object({
       vendorHint: vendorHintSchema.default("cisco-ios"),
     })
     .optional(),
+  /**
+   * campus-three-tier only: a wireless LAN controller in the campus service
+   * block. Ignored by branch-office/smb-flat. The controller itself is
+   * modeled (a device, trunked to the distribution pair, with a management
+   * address); individual access points are not — they're a floor-plan/survey
+   * concern, not a topology one.
+   */
+  wirelessController: z
+    .object({
+      present: z.boolean(),
+      vendorHint: vendorHintSchema.default("cisco-ios"),
+    })
+    .optional(),
   vlans: z.array(designParamsVlanSchema).min(1),
   /** Everything the LLM had to assume that the user didn't state — forwarded into the composed design's meta.assumptions. */
   assumptions: z.array(z.string()).default([]),

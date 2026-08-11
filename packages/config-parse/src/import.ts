@@ -37,6 +37,16 @@ export function detectVendor(text: string): "cisco-ios" | null {
  * on the returned `devices[].sourceText`.
  */
 export function importConfigs(uploads: UploadedConfig[], options: AssembleOptions = {}): ConfigToDesignResult {
+  return assembleDesign(parseUploads(uploads), options);
+}
+
+/**
+ * The parse half of {@link importConfigs}, without assembling or validating a
+ * design. Callers that only need the parsed facts — parser-coverage reporting
+ * on an already-imported project, for instance — use this rather than paying
+ * for a full re-assemble.
+ */
+export function parseUploads(uploads: UploadedConfig[]): ParsedDevice[] {
   if (uploads.length === 0) {
     throw new UnsupportedConfigError("Upload at least one device configuration file.");
   }
@@ -44,7 +54,7 @@ export function importConfigs(uploads: UploadedConfig[], options: AssembleOption
   // One uploaded file may hold several devices (engineers concatenate a whole
   // site, and our own "Download configs" export does exactly that), so each file
   // is split into per-device sections before parsing — see splitDeviceConfigs.
-  const parsed: ParsedDevice[] = uploads.flatMap((upload) => {
+  return uploads.flatMap((upload) => {
     if (upload.text.trim() === "") {
       throw new UnsupportedConfigError(`${upload.name} is empty.`);
     }
@@ -56,6 +66,4 @@ export function importConfigs(uploads: UploadedConfig[], options: AssembleOption
     }
     return splitDeviceConfigs(upload.text).map((section) => parseCiscoIosConfig(section, upload.name));
   });
-
-  return assembleDesign(parsed, options);
 }

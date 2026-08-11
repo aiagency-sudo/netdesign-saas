@@ -82,6 +82,7 @@ export function parseCiscoIosConfig(text: string, sourceName = "config.txt"): Pa
     staticRoutes: [],
     ipRoutingEnabled: false,
     unparsedLines: [],
+    consideredLineCount: 0,
     sourceText: text,
     sourceName,
   };
@@ -98,6 +99,7 @@ export function parseCiscoIosConfig(text: string, sourceName = "config.txt"): Pa
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line === "" || line === "!" || line === "end" || line.startsWith("!")) continue;
+    device.consideredLineCount++;
 
     // --- top-level statements that close any open block ---
     const hostname = /^hostname\s+(\S+)$/.exec(line);

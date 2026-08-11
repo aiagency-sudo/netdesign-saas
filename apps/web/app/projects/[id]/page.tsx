@@ -1,10 +1,28 @@
 import { notFound } from "next/navigation";
-import type { Finding } from "@netdesign/config-parse";
+import { fileCoverage, parseUploads, type FileParseCoverage, type Finding } from "@netdesign/config-parse";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectTabs } from "@/components/ProjectTabs";
 import { RegenerateForm } from "@/components/RegenerateForm";
 import type { SourceConfig } from "@/components/SourceConfigs";
 import type { VersionSummary } from "@/components/VersionHistory";
+
+/**
+ * Re-derives parser coverage from the stored uploads rather than persisting it
+ * at import time: the parser is deterministic, so re-reading the same bytes
+ * gives the same answer, and a coverage number can never go stale against a
+ * parser improvement. Parsing is pure string work — no LLM, no network.
+ *
+ * Returns undefined rather than throwing if the stored uploads can't be
+ * re-parsed; coverage is a reporting aid, and losing it must never take the
+ * project page down with it.
+ */
+function parseCoverageOf(configs: SourceConfig[]): FileParseCoverage[] | undefined {
+  try {
+    return fileCoverage(parseUploads(configs));
+  } catch {
+    return undefined;
+  }
+}
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,6 +48,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const isImport = project.source_kind === "config-import";
   const sourceConfigs = (project.source_configs ?? undefined) as SourceConfig[] | undefined;
   const findings = (project.findings ?? undefined) as Finding[] | undefined;
+  const coverage = sourceConfigs ? parseCoverageOf(sourceConfigs) : undefined;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
@@ -77,6 +96,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           currentVersionId={project.current_version_id}
           {...(findings ? { findings } : {})}
           {...(sourceConfigs ? { sourceConfigs } : {})}
+          {...(coverage ? { coverage } : {})}
         />
       ) : (
         <p className="text-sm text-slate-500">No design generated yet.</p>

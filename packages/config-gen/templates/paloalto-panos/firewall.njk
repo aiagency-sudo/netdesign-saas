@@ -1,0 +1,35 @@
+{{ banner }}
+set deviceconfig system hostname {{ hostname }}
+{% if managementProfile %}
+set network profiles interface-management-profile {{ managementProfile }} ping yes
+{% endif %}
+{% for iface in interfaces %}
+{% if iface.mode == "dhcp" %}
+set network interface ethernet {{ iface.name }} layer3 dhcp-client enable yes
+set network interface ethernet {{ iface.name }} layer3 dhcp-client create-default-route yes
+{% else %}
+set network interface ethernet {{ iface.name }} layer3 ip {{ iface.ipCidr }}
+{% if iface.managementProfile %}
+set network interface ethernet {{ iface.name }} layer3 interface-management-profile {{ iface.managementProfile }}
+{% endif %}
+{% endif %}
+set network interface ethernet {{ iface.name }} comment "{{ iface.comment }}"
+set vsys vsys1 import network interface {{ iface.name }}
+{% endfor %}
+{% for zone in zones %}
+{% for ifaceName in zone.interfaces %}
+set zone {{ zone.name }} network layer3 {{ ifaceName }}
+{% endfor %}
+{% endfor %}
+{% for iface in interfaces %}
+set network virtual-router {{ virtualRouter }} interface {{ iface.name }}
+{% endfor %}
+{% if ecmp %}
+set network virtual-router {{ virtualRouter }} ecmp enable yes
+{% endif %}
+{% for route in staticRoutes %}
+set network virtual-router {{ virtualRouter }} routing-table ip static-route "{{ route.name }}" destination {{ route.destination }}
+set network virtual-router {{ virtualRouter }} routing-table ip static-route "{{ route.name }}" nexthop ip-address {{ route.nextHop }}
+set network virtual-router {{ virtualRouter }} routing-table ip static-route "{{ route.name }}" interface {{ route.interfaceName }}
+set network virtual-router {{ virtualRouter }} routing-table ip static-route "{{ route.name }}" metric {{ route.metric }}
+{% endfor -%}
