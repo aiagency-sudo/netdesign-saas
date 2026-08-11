@@ -1548,10 +1548,66 @@ HLD via doc-gen.
 
 **Still to do for this feature:**
 1. More vendors (FortiGate/PAN-OS parsers) once cisco-ios is proven with testers.
-2. Surface `unparsedLines` in the UI so parser coverage gaps are visible per file
-   (currently only summarised in a finding + an assumption).
+2. ~~Surface `unparsedLines` in the UI~~ — **DONE**, see "parser coverage in the
+   uploaded-config tab" below.
 3. Consider moving `source_configs` from a jsonb column to Supabase storage if
    uploads get large — fine at current sizes, and jsonb keeps it transactional.
+
+### Parser coverage in the uploaded-config tab — DONE
+
+Closes item 2 above. An unrecognised config line is a line the diagram, HLD and
+.vsdx don't reflect, so the gap has to be visible per file, not just summarised
+in one `unparsed-lines` finding.
+
+- `packages/config-parse`:
+  - `ParsedDevice.consideredLineCount` (new) — how many lines the parser
+    actually looked at. Counted in `cisco-ios.ts` right where the
+    blank/`!`/`end` skip rule lives, so a coverage number can't drift from the
+    parser's real behaviour.
+  - `coverage.ts` (new): `fileCoverage(devices) -> FileParseCoverage[]` —
+    per-**file** (not per-device, because that's what the user dragged in;
+    a multi-device file groups into one entry) name, hostnames, considered
+    line count and the unrecognised lines verbatim.
+  - `parseUploads(uploads)` (new export): the parse half of `importConfigs`
+    without assemble/validate, so a caller that only needs parsed facts doesn't
+    pay for a full re-assemble. `importConfigs` is now one line on top of it.
+  - `test/coverage.test.ts` (5 tests), including the invariant that
+    unrecognised ⊆ considered. config-parse 44 → 49 tests.
+- `apps/web`: the **Uploaded config** tab now shows, per file, either a green
+  "all N lines were read" panel or an amber "**X of N lines** weren't
+  recognised… your configuration itself is unchanged" panel with a Show/Hide
+  list of the exact lines; file buttons carry an amber count badge. Coverage is
+  **re-derived on page render** from the stored uploads (`parseCoverageOf` in
+  `app/projects/[id]/page.tsx`) rather than persisted — the parser is
+  deterministic, so re-reading the same bytes gives the same answer, and a
+  stored number could never go stale against a parser improvement. It's pure
+  string work (no LLM, no network) and failures fall back to "no coverage
+  shown" rather than taking the project page down.
+
+### Combined config download: per-vendor comment characters — DONE
+
+The "Download configs" file separated devices with a `!`-prefixed header, which
+is a syntax error pasted into a FortiGate or a PAN-OS — so a mixed-vendor site
+handed the engineer a file whose section markers had to be deleted by hand.
+Flagged when PAN-OS shipped, fixed here.
+
+- `packages/config-gen/src/combine.ts` (new): `commentPrefixFor(vendorHint)`
+  (`#` for fortinet-fortigate/paloalto-panos, `!` otherwise) and
+  `combineConfigs(design, configs)`, which builds the download file with each
+  device's own comment character. The format now lives next to the templates
+  that decide the comment character, instead of in the route.
+- `apps/web/.../configs/route.ts` calls `combineConfigs`; the route no longer
+  owns a `SECTION_RULE`.
+- `scripts/render-configs.ts` prints `combineConfigs` output when dumping a
+  whole design, so `pnpm configs --fixture g1-panos` is byte-identical to what
+  the Download button serves — the script exercises the file format too.
+- `test/combine.test.ts` (7 tests). config-gen 65 → 72 tests.
+- Not affected: `splitDeviceConfigs` (the importer) splits on `hostname` lines,
+  not on these headers, so the round-trip is untouched.
+- Still true and unchanged: a downloaded **mixed-vendor** file can't be
+  re-imported, because `detectVendor` refuses a file containing FortiOS/PAN-OS
+  syntax rather than half-parsing it. Correct behaviour today; revisit if
+  testers actually try to round-trip a whole site.
 
 ### (original scoping notes)
 Upload existing or draft device configs → parse → produce a schema-valid design
@@ -1721,10 +1777,9 @@ them. Correct form is no separator: `pnpm generate --fixture g1`. Docs in
    default (ip-modulo). Confirm, or name the algorithm you want.
 
 **Known follow-ups (not in this increment):**
-- The multi-device combined download (`/api/projects/[id]/configs`) separates
-  devices with a `!`-prefixed cisco-style header. That line is invalid in both
-  FortiOS and PAN-OS pastes (pre-existing since FortiGate shipped, not new
-  here). Small fix: per-vendor comment character in the section rule.
+- ~~The multi-device combined download uses a `!`-prefixed header, invalid in
+  FortiOS/PAN-OS pastes.~~ **FIXED** — see "Combined config download:
+  per-vendor comment characters" below.
 - `packages/config-parse` still **refuses** PAN-OS uploads rather than
   half-parsing them — unchanged and still correct; a PAN-OS *parser* is a
   separate piece of work from this *generator*.

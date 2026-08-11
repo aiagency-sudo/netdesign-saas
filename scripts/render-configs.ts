@@ -23,7 +23,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { renderAllConfigs } from "@netdesign/config-gen";
+import { combineConfigs, renderAllConfigs } from "@netdesign/config-gen";
 import { composeDesign } from "@netdesign/design-engine";
 import { createAnthropicExtractionClient, generateDesign } from "@netdesign/llm-extraction";
 import { designParamsSchema, type Design, type DesignParams } from "@netdesign/schema";
@@ -211,10 +211,10 @@ async function main() {
     }
     console.log(config);
   } else {
-    for (const deviceId of deviceIds) {
-      console.log(`${"=".repeat(70)}\n=== ${deviceId}\n${"=".repeat(70)}\n`);
-      console.log(configs[deviceId]);
-    }
+    // Byte-for-byte what the web app's "Download configs" button serves, so
+    // this script also exercises the combined-file format (per-vendor comment
+    // characters on the section headers), not just the templates.
+    console.log(combineConfigs(design, configs));
   }
 
   if (values["out-dir"]) {

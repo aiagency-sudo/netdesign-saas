@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { Design } from "@netdesign/schema";
-import type { Finding } from "@netdesign/config-parse";
+import type { FileParseCoverage, Finding } from "@netdesign/config-parse";
 import { AssumptionsList } from "./AssumptionsList";
 import { DesignCanvas } from "./DesignCanvas";
 import { DeviceListTable } from "./DeviceListTable";
@@ -54,6 +54,7 @@ export function ProjectTabs({
   currentVersionId,
   findings,
   sourceConfigs,
+  coverage,
 }: {
   projectId: string;
   design: Design;
@@ -62,6 +63,7 @@ export function ProjectTabs({
   /** Present only for config-import projects. */
   findings?: Finding[];
   sourceConfigs?: SourceConfig[];
+  coverage?: FileParseCoverage[];
 }) {
   const [tab, setTab] = useState<Tab>("diagram");
   const isImport = sourceConfigs !== undefined && sourceConfigs.length > 0;
@@ -87,7 +89,7 @@ export function ProjectTabs({
       {tab === "devices" && <DeviceListTable design={design} />}
       {tab === "assumptions" && <AssumptionsList design={design} />}
       {tab === "findings" && <FindingsList findings={findings ?? []} />}
-      {tab === "source" && <SourceConfigs configs={sourceConfigs ?? []} />}
+      {tab === "source" && <SourceConfigs configs={sourceConfigs ?? []} coverage={coverage ?? []} />}
       {tab === "versions" && (
         <VersionHistory projectId={projectId} versions={versions} currentVersionId={currentVersionId} />
       )}
