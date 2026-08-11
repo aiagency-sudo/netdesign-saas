@@ -12,6 +12,7 @@ export * from "./zod/security.js";
 export * from "./zod/cloud.js";
 export * from "./zod/design.js";
 export * from "./zod/design-params.js";
+export * from "./zod/finding.js";
 
 export { default as designSchemaJson } from "./design-schema.json" with { type: "json" };
 

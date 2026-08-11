@@ -1,6 +1,8 @@
 export * from "./client.js";
 export * from "./extract.js";
 export * from "./generate.js";
+export * from "./sketch.js";
+export * from "./sketch-prompt.js";
 export {
   CLARIFY_TOOL_DESCRIPTION,
   CLARIFY_TOOL_NAME,

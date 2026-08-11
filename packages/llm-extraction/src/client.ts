@@ -5,10 +5,20 @@ import type Anthropic from "@anthropic-ai/sdk";
  * Claude — deliberately not the full `@anthropic-ai/sdk` surface, so tests
  * can supply a fake client with no SDK/network involved at all.
  */
+/**
+ * The request-side content blocks this module sends. Prose extraction sends a
+ * plain string; sketch/diagram extraction sends a mix of text, images and PDFs
+ * (see packages/doc-ingest, which decides what an upload becomes).
+ */
+export type ExtractionRequestBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } };
+
 export interface ExtractionMessageParams {
   model: string;
   system: string;
-  messages: Array<{ role: "user"; content: string }>;
+  messages: Array<{ role: "user"; content: string | ExtractionRequestBlock[] }>;
   tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
   toolChoice: { type: "tool"; name: string } | { type: "any" };
   maxTokens: number;
@@ -51,7 +61,10 @@ export function createAnthropicExtractionClient(options: { apiKey?: string } = {
       const message = await anthropic.messages.create({
         model: params.model,
         system: params.system,
-        messages: params.messages,
+        // Same reasoning as `tools` below: our block union is a structural
+        // match for the SDK's request types at runtime, and threading the
+        // SDK's generics through this DI seam buys nothing.
+        messages: params.messages as unknown as Anthropic.MessageParam[],
         // params.tools' input_schema is a plain Record<string, unknown> (derived at runtime from
         // zodToJsonSchema); the SDK wants its own narrower InputSchema type, which is a structural
         // match at runtime, but not something worth threading a JSON Schema type through for.

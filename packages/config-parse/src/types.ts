@@ -87,15 +87,13 @@ export interface ParsedDevice {
  * REPORTING ONLY: they never mutate the parsed facts and never contain
  * generated configuration lines. The engineer's config stands as written.
  */
-export interface Finding {
-  severity: "info" | "warning";
-  /** Short machine-ish category, e.g. "hsrp-equal-priority". */
-  code: string;
-  /** Human-readable observation. */
-  message: string;
-  /** Device hostname(s) the finding concerns. */
-  devices: string[];
-}
+/**
+ * Re-exported from `@netdesign/schema`, where the advisory contract now lives
+ * so that sketch-import recommendations and config-import findings are the
+ * same shape — one persisted format, one UI. Importing `Finding` from this
+ * package remains valid.
+ */
+export type { Finding } from "@netdesign/schema";
 
 export interface RoleInference {
   role: DeviceRole;

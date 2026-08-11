@@ -5,6 +5,18 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
-  "references": [{ "path": "../schema" }, { "path": "../design-engine" }]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../design-engine"
+    },
+    {
+      "path": "../doc-ingest"
+    }
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@netdesign/llm-extraction",
+  "name": "@netdesign/doc-ingest",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,12 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
-    "@netdesign/design-engine": "workspace:*",
-    "@netdesign/doc-ingest": "workspace:*",
-    "@netdesign/schema": "workspace:*",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.23.5"
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
