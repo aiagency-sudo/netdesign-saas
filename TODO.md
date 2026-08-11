@@ -85,10 +85,10 @@ workspace, now including `apps/web` and `scripts/`) and `services/vsdx`'s
     desktop license per BUILD_PLAN's "(or Visio web viewer)" allowance).
     G1 and G4 both open without errors in all three.
 - **`scripts/generate-design.ts`** (new — BUILD_PLAN Session 4's "wire
-  engine → vsdx service end-to-end via a CLI script"): `pnpm generate --
-  --fixture g1|g4` composes a golden scenario directly (no LLM call, no
+  engine → vsdx service end-to-end via a CLI script"):
+  `pnpm generate --fixture g1|g4` composes a golden scenario directly (no LLM call, no
   `ANTHROPIC_API_KEY` needed — the params are inlined in the script, not
-  imported from test/ code) or `pnpm generate -- --prose "<text>"` runs the
+  imported from test/ code) or `pnpm generate --prose "<text>"` runs the
   full `user prose → design-params → design JSON` pipeline via
   `@netdesign/llm-extraction`, then POSTs the result to a running
   `services/vsdx` instance's `/export` and writes the `.vsdx` to disk
@@ -135,7 +135,7 @@ workspace, now including `apps/web` and `scripts/`) and `services/vsdx`'s
     genuinely missing label from one of its many same-text siblings.
   - `tests/fixtures/g{1,4}_*.json` (Python) updated to match the new TS
     snapshot output exactly (interface-suffixed links + `interfaces[]`).
-  - Verified end-to-end via `pnpm generate -- --fixture g1|g4` against a
+  - Verified end-to-end via `pnpm generate --fixture g1|g4` against a
     locally running vsdx service; sent both exports to the founder for
     visual confirmation — **confirmed good**, with one bug found on review:
     `sw-02` (rightmost device in G1's grid row) had its `rtr-02`-facing and
@@ -1672,6 +1672,31 @@ expressed in PAN-OS `set` syntax** — no new design opinions were invented:
 - `apps/web/.../configs/route.ts`: "no supported devices" message updated.
 - config-gen 48 → 65 tests. Full workspace green (build + test + test:golden +
   typecheck + web lint).
+
+**HOW TO TEST IT (four levels, cheapest first):**
+1. **Read the rendered config, no setup** — `packages/config-gen/test/__snapshots__/panos.test.ts.snap`
+   is the full G1 PAN-OS edge config, committed.
+2. **Render it yourself** — `pnpm configs --fixture g1-panos --device fw-01`
+   (new `scripts/render-configs.ts`; also `g4-panos` for the single-router case
+   and `g2-panos` for the campus edge; `--out-dir out/` writes one file per
+   device; no `--` before the flags, see below). Needs no API key and no
+   running service — config-gen is pure template rendering.
+3. **Prose → config, the real user path** —
+   `ANTHROPIC_API_KEY=... pnpm configs --prose "small branch, two routers with
+   HSRP, corp and guest VLANs, Palo Alto at the edge"` proves the extractor
+   actually picks `paloalto-panos` and the template renders from it. Or run the
+   web app (`pnpm --filter @netdesign/web dev`, env per `apps/web/.env.example`)
+   and use **Download configs** on a generated project.
+4. **The one that counts: paste it into a lab firewall.** PA-VM or any lab
+   PAN-OS box, `configure` → paste → `commit`, then check `show interface all`,
+   `show routing route`, and that the zones/VR look right in the GUI. That is
+   what the checklist below is really asking you to confirm.
+
+**Tooling note (pre-existing bug, fixed in this commit):** under pnpm 10 the
+documented `pnpm generate -- --fixture g1` form **fails** — the `--` makes pnpm
+forward the flags into the script's own inner `pnpm run build`, which rejects
+them. Correct form is no separator: `pnpm generate --fixture g1`. Docs in
+`scripts/generate-design.ts` and this file are corrected.
 
 **FOUNDER REVIEW CHECKLIST — these are the calls I made; please confirm or correct:**
 1. **Banner as `#`.** Same deviation you approved for FortiOS: `!` is not a

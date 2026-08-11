@@ -10,9 +10,11 @@
     "test:golden": "pnpm run build && pnpm -r --if-present run test:golden",
     "lint": "pnpm -r --if-present run lint",
     "typecheck": "pnpm run build && pnpm -r --if-present run typecheck && tsc -p tsconfig.json --noEmit",
-    "generate": "pnpm run build && tsx scripts/generate-design.ts"
+    "generate": "pnpm run build && tsx scripts/generate-design.ts",
+    "configs": "pnpm run build && tsx scripts/render-configs.ts"
   },
   "dependencies": {
+    "@netdesign/config-gen": "workspace:*",
     "@netdesign/design-engine": "workspace:*",
     "@netdesign/llm-extraction": "workspace:*",
     "@netdesign/schema": "workspace:*"

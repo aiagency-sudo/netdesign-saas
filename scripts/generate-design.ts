@@ -7,9 +7,13 @@
  * saves the returned .vsdx to disk.
  *
  * Usage:
- *   pnpm generate -- --fixture g1
- *   pnpm generate -- --fixture g4 --out out/g4.vsdx
- *   ANTHROPIC_API_KEY=... pnpm generate -- --prose "branch office with two routers..."
+ *   pnpm generate --fixture g1
+ *   pnpm generate --fixture g4 --out out/g4.vsdx
+ *   ANTHROPIC_API_KEY=... pnpm generate --prose "branch office with two routers..."
+ *
+ * Note: no `--` before the flags — under pnpm 10 a `--` separator makes pnpm
+ * forward the flags into this script's own inner `pnpm run build` step, which
+ * rejects them.
  *
  * Requires: `pnpm run build` (workspace packages must have dist/ built —
  * the root `generate` script does this for you) and a running vsdx service
@@ -82,8 +86,8 @@ function printUsageAndExit(message?: string): never {
   console.error(
     [
       "Usage:",
-      "  pnpm generate -- --fixture <g1|g2|g4> [--out <path>] [--vsdx-url <url>]",
-      "  pnpm generate -- --prose \"<requirements>\" [--out <path>] [--vsdx-url <url>] [--model <model>]",
+      "  pnpm generate --fixture <g1|g2|g4> [--out <path>] [--vsdx-url <url>]",
+      "  pnpm generate --prose \"<requirements>\" [--out <path>] [--vsdx-url <url>] [--model <model>]",
       "",
       "Options:",
       "  --fixture <name>       Use a canned golden-scenario design-params preset (g1, g2, g4) — no ANTHROPIC_API_KEY needed.",
