@@ -1071,6 +1071,23 @@ vars reach the browser — everything below deliberately has no such prefix.
 4. Update your local `.env`.
 5. **Revoke the old key** in the provider's console.
 
+**Identity federation — considered and declined (2026-08).** Anthropic supports
+Workload Identity Federation (short-lived OIDC tokens, no static key) for **GCP,
+AWS, Azure and GitHub Actions**. `/api/generate` runs on **Vercel** functions,
+which isn't a supported issuer, so there's no trusted token to exchange — the
+API key stays. **Revisit if we add GitHub Actions CI** that calls the real API
+(e.g. a nightly golden run); that is supported and would remove a long-lived key
+from repo secrets.
+
+If it's ever adopted: the SDK auto-detects federation from
+`ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` +
+`ANTHROPIC_SERVICE_ACCOUNT_ID` + `ANTHROPIC_IDENTITY_TOKEN_FILE`, but
+**`ANTHROPIC_API_KEY` outranks it even when set to an empty string** (as do
+`ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_PROFILE`) — those must be *deleted*, not
+blanked. `packages/llm-extraction/src/client.ts` would also need the zero-arg
+`new Anthropic()` constructor instead of `new Anthropic({ apiKey })`, and the
+`if (!apiKey)` guards in the two API routes would have to go.
+
 **Blast radius of an expired `ANTHROPIC_API_KEY`:** prompt generation and
 Regenerate fail (`/api/generate` returns 503 when unset, or a generation error
 when set-but-invalid). **Config import is unaffected — it makes no LLM call**,
