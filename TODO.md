@@ -1048,6 +1048,34 @@ Providers → Email (or Sign In/Up settings) → turn **OFF "Confirm email"**
 "Your sign-in link" email that creates the account and signs in on click. Safe
 for magic-link auth (no password ⇒ no unconfirmed-account risk). No code change.
 
+### Secrets & key rotation
+
+**Never in code, never in chat, never committed.** Every secret is read from an
+environment variable (CLAUDE.md hard rule 7); `.gitignore` covers `.env` and
+`.env.*` while allowing the committed `.env.example`. Only `NEXT_PUBLIC_`-prefixed
+vars reach the browser — everything below deliberately has no such prefix.
+
+| Secret | Where it lives | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Vercel env vars (Production + Preview); `.env` locally | Server-only. Used by `/api/generate` + `/api/projects/[id]/regenerate` via `packages/llm-extraction`. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel env vars | **Bypasses RLS** — full access. Only `lib/supabase/admin.ts` (the `/admin` page) uses it. |
+| `ADMIN_EMAIL` | Vercel env vars | Gates `/admin`; anyone else gets a 404. |
+| `NEXT_PUBLIC_SUPABASE_*` | Vercel env vars | Browser-safe by design (RLS enforces access). |
+
+**Rotating a key (e.g. an expired `ANTHROPIC_API_KEY`):**
+1. Generate the new key in the provider's console.
+2. Vercel → Settings → Environment Variables → edit the existing entry → Save.
+   Update **every** scope it's set for (Production, Preview).
+3. **Redeploy.** Vercel bakes env vars in at build time, so an edit does NOT
+   affect the running deployment — Deployments → ⋯ → Redeploy (or merge a PR).
+4. Update your local `.env`.
+5. **Revoke the old key** in the provider's console.
+
+**Blast radius of an expired `ANTHROPIC_API_KEY`:** prompt generation and
+Regenerate fail (`/api/generate` returns 503 when unset, or a generation error
+when set-but-invalid). **Config import is unaffected — it makes no LLM call**,
+which is also why imports cost nothing per use.
+
 ### Measuring the beta: where the data lives + how to get it out
 
 **Two separate email lists — don't confuse them:**
